@@ -20,7 +20,7 @@ Population aging, combined with a growing shortage of housing adapted to the nee
 
 Housing and relocation in later life is shaped by a complex interplay of factors. The decision to move is influenced not only by housing characteristics (usability, tenure, size), but by neighborhood context, social ties, health, and individual capacity. Theory suggests that moving intentions are the most proximal predictor of actual relocation behavior, but there is substantial evidence that a large proportion of older adults who intend to move do not follow through, and conversely that some who do not intend to move relocate unexpectedly. Understanding what explains the gap between intention and action is both theoretically and practically important.
 
-This study builds on a prospective longitudinal project examining housing, relocation, and active and healthy aging. An earlier version of this manuscript, focused on baseline cross-sectional associations between moving intentions and housing, neighborhood, and health factors, was submitted to the *European Journal of Aging*. The availability of two follow-up waves (2022 and 2024) now enables us to extend that work by examining whether and to what extent baseline factors predict actual relocation over a three-year period.
+This study draws on a prospective longitudinal project examining housing, relocation, and active and healthy aging among older adults registered on housing company interest lists in Sweden. With data collected across three time points (2021, 2022, 2024), the study is positioned to examine whether and to what extent baseline intentions and housing-related factors predict actual relocation over a three-year period.
 
 ## Study aim
 
@@ -60,19 +60,7 @@ Most participants (82%) owned their home; just over half (53%) lived in multifam
 
 **Outcome:** Actual relocation between T1 and T3, recorded as binary (`relocated`: 0 = No, 1 = Yes) and as a count (`nr_reloc`).
 
-## Key baseline findings (cross-sectional)
-
-At baseline, 43% of participants reported an intention to move. The most common reasons for being listed with a housing company were wanting a more attractive dwelling (30%), better opportunities to engage in valued activities (30%), wanting to live on one floor (23%), and not wanting to manage their current dwelling (22%).
-
-In multivariable logistic regression at baseline, five factors were independently associated with moving intentions:
-
-| Factor | Direction | OR (95% CI) |
-|--------|-----------|-------------|
-| Home usability (per unit) | Lower usability, higher intention | 0.58 (0.47–0.72) |
-| Urban location (vs. rural) | Urban, higher intention | 1.51–2.02 |
-| Semi-urban location (vs. rural) | Semi-urban, higher intention | 2.02 (1.39–2.97) |
-| One-person household | Single, higher intention | 1.36 (1.07–1.72) |
-| Mobility dissatisfaction | Less satisfied, higher intention | 1.65 (1.11–2.47) |
+At baseline, approximately 43% of participants expected to move within two years, with most citing wanting a more suitable or attractive dwelling as their primary reason for being listed with a housing company.
 
 ## Longitudinal results (three-year follow-up)
 
