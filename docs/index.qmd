@@ -12,7 +12,57 @@ format:
     smooth-scroll: true
     code-fold: true
     embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
 ---
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(broom)
+library(gtsummary)
+
+df <- readRDS("../data/processed/survey_analysis.rds")
+dat <- df |> filter(!is.na(relocated_f))
+
+# ── RQ1/RQ2 models (full sample) ──────────────────────────────────────────────
+dat_rq2 <- dat |>
+  filter(
+    !is.na(intention_timeframe), !is.na(age), !is.na(sex),
+    complete.cases(pick(housing_suitability, home_satisfaction, neighbourhood_cohesion))
+  )
+
+m1 <- glm(relocated_f ~ intention_timeframe,
+          data = dat_rq2, family = binomial)
+m2 <- glm(relocated_f ~ intention_timeframe + age + sex,
+          data = dat_rq2, family = binomial)
+m6 <- glm(relocated_f ~ intention_timeframe + age + sex +
+            housing_suitability + home_satisfaction + neighbourhood_cohesion,
+          data = dat_rq2, family = binomial)
+
+# ── RQ3 models (intenders only) ───────────────────────────────────────────────
+dat_rq3 <- dat |>
+  filter(
+    !is.na(intention_level), !is.na(age), !is.na(sex),
+    complete.cases(pick(
+      housing_suitability, home_satisfaction, neighbourhood_cohesion,
+      any_obstacle, obs_financial, obs_supply, obs_energy,
+      obs_own_health, obs_partner_health, obs_dependents, obs_bulky
+    ))
+  )
+
+m1_rq3 <- glm(relocated_f ~ intention_level + age + sex,
+               data = dat_rq3, family = binomial)
+m4_rq3 <- glm(
+  relocated_f ~ intention_level + age + sex +
+    housing_suitability + home_satisfaction + neighbourhood_cohesion +
+    any_obstacle + obs_financial + obs_supply + obs_energy +
+    obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
+  data = dat_rq3, family = binomial
+)
+```
 
 ## Background
 
@@ -70,20 +120,59 @@ Over the three-year study period, **20.6% of participants (n = 404)** relocated 
 
 Baseline moving intentions were strongly predictive of actual relocation. Compared to those who expected to move in two or more years, the odds of relocation were:
 
-| Intention timeframe | OR (95% CI) | p |
-|---------------------|-------------|---|
-| 1–2 years | 3.55 (2.65–4.77) | <0.001 |
-| < 1 year | 22.1 (15.7–31.3) | <0.001 |
-
-These estimates were virtually unchanged after adjusting for age and sex (Nagelkerke R² = 0.29), indicating that the intention-relocation relationship is not confounded by basic demographics.
-
 Among those who expected to move within a year, **71.4%** actually did so. Among those who expected to wait two or more years, only **10.4%** relocated.
+
+![Relocation rates by baseline moving intention](figures/fig_relocation_by_intention.png){fig-alt="Bar chart showing relocation rates by intention timeframe." width="70%"}
+
+```{r}
+#| label: tbl-rq1
+#| tbl-cap: "RQ1: Logistic regression — moving intentions predicting relocation"
+tbl_merge(
+  list(
+    tbl_regression(m1, exponentiate = TRUE,
+                   label = list(intention_timeframe ~ "Intention timeframe")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05),
+    tbl_regression(m2, exponentiate = TRUE,
+                   label = list(intention_timeframe ~ "Intention timeframe",
+                                age ~ "Age (per year)",
+                                sex ~ "Sex")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05)
+  ),
+  tab_spanner = c("**M1: Unadjusted**", "**M2: Adjusted**")
+)
+```
 
 ![Forest plot: unadjusted vs adjusted ORs for moving intentions predicting relocation (RQ1)](figures/RQ1_forest_plot.png){fig-alt="Forest plot showing odds ratios for intention timeframe categories predicting relocation, unadjusted and adjusted for age and sex." width="75%"}
 
 ### RQ2: Housing factors add minimally beyond intentions
 
 Home satisfaction was the only housing factor with an independent association with relocation (OR ≈ 0.76–0.86; lower satisfaction associated with higher odds of relocation). Housing suitability and neighborhood cohesion did not independently predict relocation. Housing factors as a group added only marginally to the model beyond intentions (ΔNagelkerke R² = 0.008).
+
+```{r}
+#| label: tbl-rq2
+#| tbl-cap: "RQ2: Logistic regression — housing factors predicting relocation"
+tbl_merge(
+  list(
+    tbl_regression(m2, exponentiate = TRUE,
+                   label = list(intention_timeframe ~ "Intention timeframe",
+                                age ~ "Age (per year)", sex ~ "Sex")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05),
+    tbl_regression(m6, exponentiate = TRUE,
+                   label = list(intention_timeframe ~ "Intention timeframe",
+                                age ~ "Age (per year)", sex ~ "Sex",
+                                housing_suitability   ~ "Housing suitability (1–5)",
+                                home_satisfaction     ~ "Home satisfaction (1–5)",
+                                neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05)
+  ),
+  tab_spanner = c("**M2: Intentions + demographics**",
+                  "**M6: + Housing factors**")
+)
+```
 
 ![Forest plot: baseline model vs full housing model predicting relocation (RQ2)](figures/RQ2_forest_plot.png){fig-alt="Forest plot comparing baseline and full housing models, with predictors grouped by moving intentions, demographics, and housing factors." width="75%"}
 
@@ -97,6 +186,39 @@ Within this subgroup, the most notable findings were:
 - **Age**: Older intenders were less likely to relocate (OR = 0.96 per year).
 - **Having dependents**: The only specific obstacle significantly associated with non-relocation (OR = 0.18, 95% CI: 0.03–0.74), though based on small numbers (n = 19 endorsing this item) and should be interpreted cautiously.
 - Housing factors and most other obstacles were not independently associated with non-relocation among intenders.
+
+![Relocation rates by age group](figures/fig_relocation_by_age.png){fig-alt="Bar chart showing relocation rates by age group." width="70%"}
+
+```{r}
+#| label: tbl-rq3
+#| tbl-cap: "RQ3: Logistic regression — predictors of relocation among intenders"
+tbl_merge(
+  list(
+    tbl_regression(m1_rq3, exponentiate = TRUE,
+                   label = list(intention_level ~ "Intention (< 1 yr vs 1–2 yrs)",
+                                age ~ "Age (per year)", sex ~ "Sex")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05),
+    tbl_regression(m4_rq3, exponentiate = TRUE,
+                   label = list(intention_level ~ "Intention (< 1 yr vs 1–2 yrs)",
+                                age ~ "Age (per year)", sex ~ "Sex",
+                                housing_suitability    ~ "Housing suitability (1–5)",
+                                home_satisfaction      ~ "Home satisfaction (1–5)",
+                                neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)",
+                                any_obstacle           ~ "Any obstacle",
+                                obs_financial          ~ "Obstacle: Financial",
+                                obs_supply             ~ "Obstacle: Limited supply",
+                                obs_energy             ~ "Obstacle: No energy to move",
+                                obs_own_health         ~ "Obstacle: Own health",
+                                obs_partner_health     ~ "Obstacle: Partner health",
+                                obs_dependents         ~ "Obstacle: Dependents",
+                                obs_bulky              ~ "Obstacle: Bulky goods")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05)
+  ),
+  tab_spanner = c("**M1: Baseline**", "**M4: Full model**")
+)
+```
 
 ![Forest plot: baseline model vs full model among intenders (RQ3)](figures/RQ3_forest_plot.png){fig-alt="Forest plot comparing baseline and full models among intenders, with predictors grouped by moving intentions, demographics, housing factors, and obstacles." width="75%"}
 
