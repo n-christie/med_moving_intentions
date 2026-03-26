@@ -57,7 +57,7 @@ dat |>
 # ── Fit models on common complete cases ───────────────────────────────────────
 dat_m <- dat |>
   filter(
-    !is.na(intention_level), !is.na(age), !is.na(sex),
+    !is.na(intention_level), !is.na(age), !is.na(sex), !is.na(srh),
     complete.cases(pick(
       housing_suitability, home_satisfaction, neighbourhood_cohesion,
       any_obstacle, obs_financial, obs_supply, obs_energy,
@@ -69,25 +69,25 @@ cat("\nModel sample n:", nrow(dat_m),
     "(relocated:", sum(dat_m$relocated_f == "Yes"), ")\n")
 
 m1_rq3 <- glm(
-  relocated_f ~ intention_level + age + sex,
+  relocated_f ~ intention_level + age + sex + srh,
   data = dat_m, family = binomial
 )
 
 m2_rq3 <- glm(
-  relocated_f ~ intention_level + age + sex +
+  relocated_f ~ intention_level + age + sex + srh +
     housing_suitability + home_satisfaction + neighbourhood_cohesion,
   data = dat_m, family = binomial
 )
 
 m3_rq3 <- glm(
-  relocated_f ~ intention_level + age + sex +
+  relocated_f ~ intention_level + age + sex + srh +
     any_obstacle + obs_financial + obs_supply + obs_energy +
     obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
   data = dat_m, family = binomial
 )
 
 m4_rq3 <- glm(
-  relocated_f ~ intention_level + age + sex +
+  relocated_f ~ intention_level + age + sex + srh +
     housing_suitability + home_satisfaction + neighbourhood_cohesion +
     any_obstacle + obs_financial + obs_supply + obs_energy +
     obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
@@ -99,6 +99,7 @@ term_recode <- c(
   "intention_level< 1 year"    = "Intention: < 1 year",
   "age"                        = "Age (per year)",
   "sexWoman"                   = "Sex: Woman",
+  "srh"                        = "Self-rated health (1–5)",
   "housing_suitability"        = "Housing suitability",
   "home_satisfaction"          = "Home satisfaction",
   "neighbourhood_cohesion"     = "Neighbourhood cohesion",

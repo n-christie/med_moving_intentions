@@ -8,12 +8,12 @@ library(broom)
 #
 # Outcome:    relocated_f (factor, No/Yes)
 # Predictor:  intention_timeframe (VAR24_T1; ref = "2+ years")
-# Covariates: age, sex
+# Covariates: age, sex, srh (self-rated health)
 #
 # Models:
 #   M0 — null (intercept only)
 #   M1 — intention_timeframe only (unadjusted)
-#   M2 — intention_timeframe + age + sex (adjusted)
+#   M2 — intention_timeframe + age + sex + srh (adjusted)
 #
 # Variable derivations: see scripts/01_clean/02_recode.R
 
@@ -22,7 +22,7 @@ df <- readRDS("data/processed/survey_analysis.rds")
 
 # ── Analysis sample ───────────────────────────────────────────────────────────
 dat_m <- df |>
-  filter(!is.na(relocated_f), !is.na(intention_timeframe), !is.na(age), !is.na(sex))
+  filter(!is.na(relocated_f), !is.na(intention_timeframe), !is.na(age), !is.na(sex), !is.na(srh))
 
 cat("Analysis sample:\n")
 cat("  Total n:        ", nrow(dat_m), "\n")
@@ -41,9 +41,9 @@ dat_m |>
   print()
 
 # ── Fit models ────────────────────────────────────────────────────────────────
-m0 <- glm(relocated_f ~ 1,                              data = dat_m, family = binomial)
-m1 <- glm(relocated_f ~ intention_timeframe,             data = dat_m, family = binomial)
-m2 <- glm(relocated_f ~ intention_timeframe + age + sex, data = dat_m, family = binomial)
+m0 <- glm(relocated_f ~ 1,                                       data = dat_m, family = binomial)
+m1 <- glm(relocated_f ~ intention_timeframe,                      data = dat_m, family = binomial)
+m2 <- glm(relocated_f ~ intention_timeframe + age + sex + srh,    data = dat_m, family = binomial)
 
 # ── Results ───────────────────────────────────────────────────────────────────
 print_model <- function(model, label) {
@@ -68,7 +68,7 @@ nagelkerke <- function(model, null) {
 
 cat("\n=== Model fit ===\n")
 tibble(
-  model         = c("M0 (null)", "M1 (intentions)", "M2 (+ age + sex)"),
+  model         = c("M0 (null)", "M1 (intentions)", "M2 (+ age + sex + srh)"),
   AIC           = round(c(AIC(m0), AIC(m1), AIC(m2)), 1),
   nagelkerke_r2 = c(NA, nagelkerke(m1, m0), nagelkerke(m2, m0))
 ) |>

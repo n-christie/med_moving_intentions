@@ -13,9 +13,9 @@ df <- readRDS("data/processed/survey_analysis.rds")
 
 dat_m <- df |>
   filter(
-    VAR24_T1 %in% c(1, 2),
+    !is.na(intention_level),
     !is.na(relocated_f),
-    !is.na(intention_level), !is.na(age), !is.na(sex),
+    !is.na(age), !is.na(sex), !is.na(srh),
     complete.cases(pick(
       housing_suitability, home_satisfaction, neighbourhood_cohesion,
       any_obstacle, obs_financial, obs_supply, obs_energy,
@@ -28,12 +28,12 @@ cat("Forest plot sample: n =", nrow(dat_m),
 
 # ── Refit models on common complete cases ─────────────────────────────────────
 m1_rq3 <- glm(
-  relocated_f ~ intention_level + age + sex,
+  relocated_f ~ intention_level + age + sex + srh,
   data = dat_m, family = binomial
 )
 
 m4_rq3 <- glm(
-  relocated_f ~ intention_level + age + sex +
+  relocated_f ~ intention_level + age + sex + srh +
     housing_suitability + home_satisfaction + neighbourhood_cohesion +
     any_obstacle + obs_financial + obs_supply + obs_energy +
     obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
@@ -45,6 +45,7 @@ term_labels <- c(
   "intention_level< 1 year"  = "Intention: < 1 year",
   "age"                      = "Age (per year)",
   "sexWoman"                 = "Sex: Woman",
+  "srh"                      = "Self-rated health (1\u20135)",
   "housing_suitability"      = "Housing suitability",
   "home_satisfaction"        = "Home satisfaction",
   "neighbourhood_cohesion"   = "Neighborhood cohesion",
@@ -60,7 +61,7 @@ term_labels <- c(
 
 term_order <- c(
   "Intention: < 1 year",
-  "Age (per year)", "Sex: Woman",
+  "Age (per year)", "Sex: Woman", "Self-rated health (1\u20135)",
   "Housing suitability", "Home satisfaction", "Neighborhood cohesion",
   "Any obstacle",
   "Financial", "Limited supply", "No energy to move",
@@ -68,9 +69,10 @@ term_order <- c(
 )
 
 section_labels <- c(
-  "Intention: < 1 year"   = "Moving intentions",
-  "Age (per year)"        = "Demographics",
-  "Sex: Woman"            = "Demographics",
+  "Intention: < 1 year"          = "Moving intentions",
+  "Age (per year)"               = "Demographics",
+  "Sex: Woman"                   = "Demographics",
+  "Self-rated health (1\u20135)" = "Demographics",
   "Housing suitability"   = "Housing factors",
   "Home satisfaction"     = "Housing factors",
   "Neighborhood cohesion" = "Housing factors",

@@ -70,15 +70,25 @@ df <- df |>
   )
 var_label(df$intention_level) <- "Intention level among intenders (VAR24_T1, ref=1-2yr)"
 
-# ── 4. Demographics ───────────────────────────────────────────────────────────
+# ── 4. Demographics and health ────────────────────────────────────────────────
 
 df <- df |>
   mutate(
     age = as.numeric(Age_T1),
-    sex = factor(Sex_T1, levels = c(1, 2), labels = c("Man", "Woman"))
+    sex = factor(Sex_T1, levels = c(1, 2), labels = c("Man", "Woman")),
+
+    # VAR34_T1: "In general, would you say that your health is..."
+    #   1 = Poor, 2 = Reasonably good, 3 = Good, 4 = Very good, 5 = Excellent
+    # Treated as a continuous predictor (higher = better health).
+    # Included in models as a covariate; poorer health motivates intention to move
+    # but does not independently predict actual relocation after adjusting for
+    # intentions (OR ≈ 1.07, p = .41 in preliminary analysis).
+    srh = as.numeric(VAR34_T1)
   )
 var_label(df$age) <- "Age at baseline (years)"
 var_label(df$sex) <- "Sex"
+var_label(df$srh) <- "Self-rated health (VAR34_T1; 1=Poor to 5=Excellent)"
+cat("srh: missing =", sum(is.na(df$srh)), "\n")
 
 # ── 5. Housing composites ─────────────────────────────────────────────────────
 

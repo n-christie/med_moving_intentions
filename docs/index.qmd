@@ -36,16 +36,16 @@ dat_rq2 <- dat |>
 
 m1 <- glm(relocated_f ~ intention_timeframe,
           data = dat_rq2, family = binomial)
-m2 <- glm(relocated_f ~ intention_timeframe + age + sex,
+m2 <- glm(relocated_f ~ intention_timeframe + age + sex + srh,
           data = dat_rq2, family = binomial)
-m6 <- glm(relocated_f ~ intention_timeframe + age + sex +
+m6 <- glm(relocated_f ~ intention_timeframe + age + sex + srh +
             housing_suitability + home_satisfaction + neighbourhood_cohesion,
           data = dat_rq2, family = binomial)
 
 # ── RQ3 models (intenders only) ───────────────────────────────────────────────
 dat_rq3 <- dat |>
   filter(
-    !is.na(intention_level), !is.na(age), !is.na(sex),
+    !is.na(intention_level), !is.na(age), !is.na(sex), !is.na(srh),
     complete.cases(pick(
       housing_suitability, home_satisfaction, neighbourhood_cohesion,
       any_obstacle, obs_financial, obs_supply, obs_energy,
@@ -53,10 +53,10 @@ dat_rq3 <- dat |>
     ))
   )
 
-m1_rq3 <- glm(relocated_f ~ intention_level + age + sex,
+m1_rq3 <- glm(relocated_f ~ intention_level + age + sex + srh,
                data = dat_rq3, family = binomial)
 m4_rq3 <- glm(
-  relocated_f ~ intention_level + age + sex +
+  relocated_f ~ intention_level + age + sex + srh +
     housing_suitability + home_satisfaction + neighbourhood_cohesion +
     any_obstacle + obs_financial + obs_supply + obs_energy +
     obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
@@ -126,6 +126,91 @@ Most participants (81%) owned their home; just over half (53%) lived in multifam
 
 At baseline, approximately 31% of participants (n = 612) expected to move within two years, with most citing wanting a more suitable or attractive dwelling as their primary reason for being listed with a housing company.
 
+## Descriptive statistics
+
+The table below shows distributions of all analysis variables at baseline, overall and stratified by relocation status. Continuous variables are presented as mean (SD); categorical and binary variables as n (%).
+
+```{r}
+#| label: tbl-descriptives
+#| tbl-cap: "Baseline characteristics by relocation status"
+library(gtsummary)
+
+tab_dat <- dat |>
+  mutate(
+    srh_f = factor(srh, levels = 1:5,
+                   labels = c("1 Poor", "2 Reasonably good",
+                              "3 Good", "4 Very good", "5 Excellent")),
+    obs_financial_f      = factor(obs_financial,      levels = 0:1, labels = c("No", "Yes")),
+    obs_supply_f         = factor(obs_supply,         levels = 0:1, labels = c("No", "Yes")),
+    obs_energy_f         = factor(obs_energy,         levels = 0:1, labels = c("No", "Yes")),
+    obs_own_health_f     = factor(obs_own_health,     levels = 0:1, labels = c("No", "Yes")),
+    obs_partner_health_f = factor(obs_partner_health, levels = 0:1, labels = c("No", "Yes")),
+    obs_dependents_f     = factor(obs_dependents,     levels = 0:1, labels = c("No", "Yes")),
+    obs_bulky_f          = factor(obs_bulky,          levels = 0:1, labels = c("No", "Yes")),
+    any_obstacle_f       = factor(any_obstacle,       levels = 0:1, labels = c("No", "Yes"))
+  )
+
+tbl_summary(
+  tab_dat,
+  by = relocated_f,
+  include = c(
+    age, sex, srh_f,
+    intention_timeframe,
+    housing_suitability, home_satisfaction, neighbourhood_cohesion,
+    any_obstacle_f,
+    obs_financial_f, obs_supply_f, obs_energy_f,
+    obs_own_health_f, obs_partner_health_f, obs_dependents_f, obs_bulky_f
+  ),
+  label = list(
+    age                  ~ "Age (years)",
+    sex                  ~ "Sex",
+    srh_f                ~ "Self-rated health",
+    intention_timeframe  ~ "Expected timeframe to move",
+    housing_suitability  ~ "Housing suitability (1–5)",
+    home_satisfaction    ~ "Home satisfaction (1–5)",
+    neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)",
+    any_obstacle_f       ~ "Any perceived obstacle",
+    obs_financial_f      ~ "  Obstacle: Financial",
+    obs_supply_f         ~ "  Obstacle: Limited supply",
+    obs_energy_f         ~ "  Obstacle: No energy to move",
+    obs_own_health_f     ~ "  Obstacle: Own health",
+    obs_partner_health_f ~ "  Obstacle: Partner health",
+    obs_dependents_f     ~ "  Obstacle: Dependents",
+    obs_bulky_f          ~ "  Obstacle: Bulky goods"
+  ),
+  statistic = list(
+    all_continuous()  ~ "{mean} ({sd})",
+    all_categorical() ~ "{n} ({p}%)"
+  ),
+  digits = list(
+    all_continuous()  ~ 1,
+    all_categorical() ~ c(0, 1)
+  ),
+  missing = "no"
+) |>
+  add_overall(last = FALSE) |>
+  add_p(
+    test = list(
+      all_continuous()  ~ "t.test",
+      all_categorical() ~ "chisq.test"
+    ),
+    pvalue_fun = \(x) style_pvalue(x, digits = 3)
+  ) |>
+  bold_labels() |>
+  bold_p(t = 0.05) |>
+  modify_header(
+    label    ~ "**Variable**",
+    stat_0   ~ "**Overall**\nN = {N}",
+    stat_1   ~ "**Not relocated**\nn = {n}",
+    stat_2   ~ "**Relocated**\nn = {n}",
+    p.value  ~ "**p**"
+  ) |>
+  modify_footnote(
+    stat_0 ~ "Mean (SD) or n (%)",
+    p.value ~ "t-test for continuous; chi-squared for categorical"
+  )
+```
+
 ## Longitudinal results (three-year follow-up)
 
 Over the three-year study period, **20.6% of participants (n = 404)** relocated at least once.
@@ -143,11 +228,11 @@ Among those who expected to move within a year, **71.4%** actually did so. Among
 $$
 \begin{aligned}
 \text{M1:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_2\,\text{Int}_{<1\,\text{yr}} \\[6pt]
-\text{M2:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_2\,\text{Int}_{<1\,\text{yr}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex}
+\text{M2:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_2\,\text{Int}_{<1\,\text{yr}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} + \beta_5\,\text{SRH}
 \end{aligned}
 $$
 
-where $p_i = P(\text{relocated}_i = 1)$ and logit$(p) = \log(p / (1-p))$.
+where $p_i = P(\text{relocated}_i = 1)$, logit$(p) = \log(p / (1-p))$, and SRH = self-rated health (1 = Poor to 5 = Excellent).
 
 ```{r}
 #| label: tbl-rq1
@@ -161,7 +246,8 @@ tbl_merge(
     tbl_regression(m2, exponentiate = TRUE,
                    label = list(intention_timeframe ~ "Intention timeframe",
                                 age ~ "Age (per year)",
-                                sex ~ "Sex")) |>
+                                sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)")) |>
       modify_header(estimate ~ "**OR**") |>
       bold_p(t = 0.05)
   ),
@@ -179,9 +265,9 @@ Home satisfaction was the only housing factor with an independent association wi
 
 $$
 \begin{aligned}
-\text{M2:} \quad \text{logit}(p_i) &= \beta_0 + \boldsymbol{\beta}_{\text{int}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} \\[6pt]
-\text{M6:} \quad \text{logit}(p_i) &= \beta_0 + \boldsymbol{\beta}_{\text{int}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} \\
-  &\quad + \beta_5\,\text{Suitability} + \beta_6\,\text{Satisfaction} + \beta_7\,\text{Cohesion}
+\text{M2:} \quad \text{logit}(p_i) &= \beta_0 + \boldsymbol{\beta}_{\text{int}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} + \beta_5\,\text{SRH} \\[6pt]
+\text{M6:} \quad \text{logit}(p_i) &= \beta_0 + \boldsymbol{\beta}_{\text{int}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} + \beta_5\,\text{SRH} \\
+  &\quad + \beta_6\,\text{Suitability} + \beta_7\,\text{Satisfaction} + \beta_8\,\text{Cohesion}
 \end{aligned}
 $$
 
@@ -192,12 +278,14 @@ tbl_merge(
   list(
     tbl_regression(m2, exponentiate = TRUE,
                    label = list(intention_timeframe ~ "Intention timeframe",
-                                age ~ "Age (per year)", sex ~ "Sex")) |>
+                                age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)")) |>
       modify_header(estimate ~ "**OR**") |>
       bold_p(t = 0.05),
     tbl_regression(m6, exponentiate = TRUE,
                    label = list(intention_timeframe ~ "Intention timeframe",
                                 age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)",
                                 housing_suitability   ~ "Housing suitability (1–5)",
                                 home_satisfaction     ~ "Home satisfaction (1–5)",
                                 neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)")) |>

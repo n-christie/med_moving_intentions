@@ -8,7 +8,7 @@ library(broom)
 #
 # Outcome:    relocated_f (factor, No/Yes)
 # Models build on the RQ1 adjusted baseline (M2):
-#   M2 — intentions + age + sex                        [baseline, from RQ1]
+#   M2 — intentions + age + sex + srh                  [baseline, from RQ1]
 #   M3 — M2 + housing suitability
 #   M4 — M2 + home satisfaction
 #   M5 — M2 + neighbourhood cohesion
@@ -21,7 +21,7 @@ df <- readRDS("data/processed/survey_analysis.rds")
 
 dat_m <- df |>
   filter(
-    !is.na(relocated_f), !is.na(intention_timeframe), !is.na(age), !is.na(sex),
+    !is.na(relocated_f), !is.na(intention_timeframe), !is.na(age), !is.na(sex), !is.na(srh),
     complete.cases(pick(housing_suitability, home_satisfaction, neighbourhood_cohesion))
   )
 
@@ -39,15 +39,15 @@ dat_m |>
   print()
 
 # ── Fit models ────────────────────────────────────────────────────────────────
-m2 <- glm(relocated_f ~ intention_timeframe + age + sex,
+m2 <- glm(relocated_f ~ intention_timeframe + age + sex + srh,
           data = dat_m, family = binomial)
-m3 <- glm(relocated_f ~ intention_timeframe + age + sex + housing_suitability,
+m3 <- glm(relocated_f ~ intention_timeframe + age + sex + srh + housing_suitability,
           data = dat_m, family = binomial)
-m4 <- glm(relocated_f ~ intention_timeframe + age + sex + home_satisfaction,
+m4 <- glm(relocated_f ~ intention_timeframe + age + sex + srh + home_satisfaction,
           data = dat_m, family = binomial)
-m5 <- glm(relocated_f ~ intention_timeframe + age + sex + neighbourhood_cohesion,
+m5 <- glm(relocated_f ~ intention_timeframe + age + sex + srh + neighbourhood_cohesion,
           data = dat_m, family = binomial)
-m6 <- glm(relocated_f ~ intention_timeframe + age + sex +
+m6 <- glm(relocated_f ~ intention_timeframe + age + sex + srh +
             housing_suitability + home_satisfaction + neighbourhood_cohesion,
           data = dat_m, family = binomial)
 

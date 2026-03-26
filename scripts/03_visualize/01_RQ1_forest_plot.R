@@ -8,34 +8,24 @@ library(broom)
 # Source models fitted in scripts/02_analyze/01_RQ1_intentions.R
 
 # ── Load data and refit models ────────────────────────────────────────────────
-df <- readRDS("data/processed/survey_clean.rds")
+df <- readRDS("data/processed/survey_analysis.rds")
 
 dat_m <- df |>
-  mutate(
-    relocated = factor(relocated, levels = c(0, 1), labels = c("No", "Yes")),
-    intention_timeframe = factor(
-      VAR24_T1,
-      levels = c(3, 2, 1),
-      labels = c("2+ years (ref)", "1\u20132 years", "< 1 year")
-    ),
-    age = as.numeric(Age_T1),
-    sex = factor(Sex_T1, levels = c(1, 2), labels = c("Man", "Woman"))
-  ) |>
-  filter(!is.na(relocated), !is.na(intention_timeframe), !is.na(age), !is.na(sex))
+  filter(!is.na(relocated_f), !is.na(intention_timeframe), !is.na(age), !is.na(sex), !is.na(srh))
 
-m1 <- glm(relocated ~ intention_timeframe,             data = dat_m, family = binomial)
-m2 <- glm(relocated ~ intention_timeframe + age + sex, data = dat_m, family = binomial)
+m1 <- glm(relocated_f ~ intention_timeframe,                   data = dat_m, family = binomial)
+m2 <- glm(relocated_f ~ intention_timeframe + age + sex + srh, data = dat_m, family = binomial)
 
 # ── Extract results ───────────────────────────────────────────────────────────
 results <- bind_rows(
   tidy(m1, conf.int = TRUE, exponentiate = TRUE) |> mutate(model = "Unadjusted"),
-  tidy(m2, conf.int = TRUE, exponentiate = TRUE) |> mutate(model = "Adjusted (age, sex)")
+  tidy(m2, conf.int = TRUE, exponentiate = TRUE) |> mutate(model = "Adjusted (age, sex, health)")
 ) |>
   filter(str_detect(term, "intention_timeframe")) |>
   mutate(
     term  = str_remove(term, "intention_timeframe"),
     term  = factor(term,  levels = c("1\u20132 years", "< 1 year")),
-    model = factor(model, levels = c("Unadjusted", "Adjusted (age, sex)"))
+    model = factor(model, levels = c("Unadjusted", "Adjusted (age, sex, health)"))
   )
 
 # ── Plot ──────────────────────────────────────────────────────────────────────
@@ -54,15 +44,15 @@ p <- ggplot(results, aes(x = estimate, y = term, colour = model, shape = model))
     breaks = c(1, 2, 5, 10, 20, 30),
     labels = c("1", "2", "5", "10", "20", "30")
   ) +
-  scale_colour_manual(values = c("Unadjusted" = "#555555", "Adjusted (age, sex)" = "#0072B2")) +
-  scale_shape_manual(values  = c("Unadjusted" = 16,        "Adjusted (age, sex)" = 17)) +
+  scale_colour_manual(values = c("Unadjusted" = "#555555", "Adjusted (age, sex, health)" = "#0072B2")) +
+  scale_shape_manual(values  = c("Unadjusted" = 16,        "Adjusted (age, sex, health)" = 17)) +
   labs(
     x       = "Odds ratio (log scale)",
     y       = "Expected timeframe to move\n(Reference: 2+ years)",
     colour  = NULL,
     shape   = NULL,
     title   = "Moving intentions at baseline predicting relocation",
-    caption = "Reference category: expecting to move in 2+ years.\nAdjusted model includes age and sex."
+    caption = "Reference category: expecting to move in 2+ years.\nAdjusted model includes age, sex, and self-rated health."
   ) +
   theme_bw(base_size = 12) +
   theme(
