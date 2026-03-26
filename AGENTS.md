@@ -51,6 +51,26 @@ This is a longitudinal survey study examining whether self-reported moving inten
 - PH assumption violated for `intention_timeframe` (Schoenfeld p < 0.001); all other predictors satisfy PH
 - Stratified Cox model (stratify on `intention_timeframe`) gives valid covariate HRs: home satisfaction HR = 0.84 (p = 0.005), other housing factors non-significant, consistent with logistic regression
 
+### Further analysis: Latent profile analysis (LPA)
+- Script: `scripts/02_analyze/06_LPA.R`; figure: `output/figures/LPA_profiles.png` (also in `docs/figures/`)
+- Method: mclust EEI Gaussian mixture model on 6 z-standardized continuous indicators (intention urgency, home satisfaction, housing suitability, SRH, age, neighborhood cohesion); k = 2–6 evaluated; VVI did not converge
+- Selected model: k = 5, BIC = -26,431, entropy = 0.785; analytic sample N = 1,799 (complete cases on all 6 indicators)
+- Binary variables (homeownership, living alone) excluded from fitting; used as auxiliary descriptors after profile assignment
+- Five profiles (reference = Profile 2, highest satisfaction / lowest relocation rate):
+
+| Profile | n | % relocated | Label | Key features |
+|---------|---|-------------|-------|--------------|
+| 1 | 400 | 26% | Dissatisfied intenders | Moderate intention; below-average satisfaction (4.00) and suitability (4.47) |
+| 2 | 574 | 11% | Satisfied older stayers (ref) | Low intention; max satisfaction; oldest (age 74.4); 87% owners |
+| 3 | 104 | 72% | Eager movers | Max intention (3.0); max satisfaction; healthy; 86% owners |
+| 4 | 134 | 47% | Environmentally pressured | Moderate intention; lowest satisfaction (2.19); lowest cohesion (1.87); 45% live alone; only 61% owners |
+| 5 | 587 | 13% | Satisfied younger stayers | Lowest intention; max satisfaction; youngest (age 63.2); healthiest (SRH 4.09) |
+
+- Logistic regression ORs vs Profile 2: Profile 1 OR = 2.79 (95% CI: 1.99–3.93, p < 0.001); Profile 3 OR = 20.2 (12.4–33.8, p < 0.001); Profile 4 OR = 6.95 (4.54–10.7, p < 0.001); Profile 5 OR = 1.18 (0.83–1.68, p = 0.35)
+- Profile 4 is the theoretically central finding: person-environment mismatch (Lawton) drives relocation despite only moderate stated intention; high renter/living-alone proportions indicate structural vulnerability
+- Profiles 2 and 5 are statistically indistinguishable in relocation odds but differ structurally (age 74 vs 63, different reasons for housing satisfaction)
+- Full thorough write-up (rationale, method, profile descriptions, regression table, interpretation) is in `docs/index.qmd`
+
 ### Macro-economic context
 - Study period (2021–2024) coincided with the Swedish Riksbank tightening cycle (0% → 4% benchmark rate, April 2022 – September 2023) and a ~20% peak-to-trough housing price collapse in 2022–2023
 - Relocation timing plot shows a sharp drop in quarterly relocations from Q3 2022, recovering gradually in 2023–2024
@@ -119,6 +139,7 @@ Analysis scripts must never perform their own data recodings. All transformation
 | `scripts/02_analyze/03_RQ3_intenders.R` | Logistic regression: predictors of relocation among intenders (M1–M4) |
 | `scripts/02_analyze/04_survival.R` | Cox PH models, PH assumption test, stratified Cox model |
 | `scripts/02_analyze/05_RQ4_nonintenders.R` | Logistic regression: predictors of unexpected relocation among non-intenders (M1–M3) |
+| `scripts/02_analyze/06_LPA.R` | Latent profile analysis: mclust EEI, k = 2–6 selection, profile descriptions, relocation regression |
 
 ## Visualization scripts
 
@@ -157,6 +178,23 @@ All written text (manuscripts, the about page, comments, documentation) must fol
 - **American spelling** — use "neighborhood" not "neighbourhood", "aging" not "ageing", "analyze" not "analyse", "behavior" not "behaviour", etc.
 - **No hyphens as punctuation** — do not use em-dashes (—) or hyphens to set off phrases; use commas instead
 - Hyphenated compound adjectives that are standard academic terms (e.g., "self-reported", "cross-sectional") are acceptable
+
+## Current project state (last updated 2026-03-26)
+
+All planned analyses are complete. The about page (`docs/index.qmd`) is fully up to date and live at https://n-christie.github.io/med_moving_intentions/.
+
+| Analysis | Status | Script | Docs section |
+|----------|--------|--------|--------------|
+| RQ1: Intentions predict relocation | ✅ Complete | `02_analyze/01_RQ1_intentions.R` | ✅ In docs |
+| RQ2: Housing factors | ✅ Complete | `02_analyze/02_RQ2_housing.R` | ✅ In docs |
+| RQ3: Among intenders | ✅ Complete | `02_analyze/03_RQ3_intenders.R` | ✅ In docs |
+| RQ4: Among non-intenders | ✅ Complete | `02_analyze/05_RQ4_nonintenders.R` | ✅ In docs |
+| Survival analysis (Cox) | ✅ Complete | `02_analyze/04_survival.R` | ✅ In docs |
+| Macro-economic context | ✅ Complete | (in docs narrative) | ✅ In docs |
+| Latent profile analysis | ✅ Complete | `02_analyze/06_LPA.R` | ✅ In docs (thorough: rationale, method, fit table, profile table, regression, interpretation) |
+| Manuscript drafting | 🔄 In progress | `paper/` | — |
+
+**Next priority: Manuscript drafting.** The central narrative arc is documented in the conversation history and AGENTS.md key results. The LPA (Profile 4, environmentally pressured) is the theoretically novel contribution and should be foregrounded. Suggested journal targets include journals focused on aging, environments, and housing (e.g., *Ageing & Society*, *Housing Studies*, *The Gerontologist*).
 
 ## Notes for agents
 

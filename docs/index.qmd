@@ -574,6 +574,196 @@ It bears noting that the renter group is substantially smaller (n = 348) than th
 
 These patterns are descriptive and cannot be formally tested within the current study design — the survey has no time-varying measures of housing market perceptions or financial capacity. They are presented to contextualise the intention-action gap identified in the main analyses: a proportion of the non-relocating intenders were likely constrained by structural market conditions rather than the personal barriers measured at baseline.
 
+## Further analysis: Latent profile analysis
+
+### Rationale and theoretical background
+
+The regression analyses in RQ1–RQ4 adopt a variable-centered perspective, asking which predictors are associated with relocation while averaging over individual differences. A complementary approach is to take a person-centered perspective: instead of asking "what variables predict the outcome?", we ask "what types of people exist in this sample, and how do those types relate to relocation?"
+
+Latent Profile Analysis (LPA) is a model-based clustering method that identifies latent subgroups, or profiles, within a continuous multivariate space. Within each profile, individuals are assumed to share a common multivariate distribution. The approach is probabilistic: each person receives a posterior probability of belonging to each profile, and the final profile assignment reflects the most likely class.
+
+The theoretical motivation here comes from Lawton's ecological model of aging [-@lawton1973ecology]. This model holds that residential behavior is driven by the interplay between a person's competence (health, functional capacity) and the demands and resources of their housing environment. When there is a mismatch — that is, when environmental demands exceed a person's capacity, or when the environment fails to meet their needs — relocation becomes likely. Conversely, a good fit between person and environment supports aging in place. Standard regression models capture parts of this dynamic (e.g., the independent effects of satisfaction and health), but they cannot identify whether groups of individuals simultaneously experience multiple dimensions of mismatch. LPA can.
+
+### Analytic approach
+
+**Indicators.** Six continuous baseline variables were included as LPA indicators:
+
+| Indicator | Original scale | Rationale |
+|-----------|---------------|-----------|
+| Intention urgency | 1 (low) to 3 (urgent) | Expressed motivation to relocate |
+| Home satisfaction | 1–5 | Affective appraisal of current home |
+| Housing suitability | 1–5 | Physical fit between home and needs |
+| Self-rated health | 1–5 | Personal competence (Lawton's model) |
+| Age | Years | Developmental stage and housing needs |
+| Neighborhood cohesion | 1–3 | Social dimension of environmental press |
+
+Binary variables (homeownership, living alone) were excluded from fitting because Gaussian mixture models assume continuous indicators. They were instead examined as auxiliary descriptors: their distributions across profiles were computed after profile assignment and used to interpret profile meaning, but they did not influence the clustering.
+
+All six indicators were z-standardized (mean = 0, SD = 1) before fitting, so that variables on different scales contribute equally to the mixture model.
+
+**Model fitting and selection.** Models were fitted using the `mclust` package in R [@scrucca2016mclust] with an equal-variance, axis-aligned (EEI) covariance structure, equivalent to assuming that each indicator has the same variance across profiles and that indicators are independent within profiles. This is the most parsimonious model class and corresponds to Model 1 in the `tidyLPA` framework. A more flexible varying-variance model (VVI) did not converge for any number of profiles in this dataset, so EEI was the only evaluated model class. Models were fitted for k = 2 to 6 profiles.
+
+Model selection used two criteria:
+
+- **BIC (mclust convention):** higher values indicate better fit (less negative = better).
+- **Entropy:** ranges from 0 to 1; values above 0.70 indicate adequate separation between profiles. A value of 1.0 indicates perfect classification.
+
+The minimum acceptable profile size was set at n > 50 (approximately 3% of the analytic sample).
+
+```{r}
+#| label: tbl-lpa-fit
+#| tbl-cap: "LPA model fit: BIC and entropy for k = 2 to 6 profiles (EEI model)"
+library(gt)
+
+tibble::tribble(
+  ~`k (profiles)`, ~BIC,       ~Entropy, ~`Min profile n`, ~Selected,
+  2L,  "-29,391",  "0.984",    "—",      "",
+  3L,  "-28,550",  "0.952",    "—",      "",
+  4L,  "-28,548",  "0.715",    "—",      "",
+  5L,  "-26,431",  "0.785",    "104",    "✓",
+  6L,  "-26,481",  "0.696",    "—",      ""
+) |>
+  gt() |>
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  ) |>
+  tab_style(
+    style     = list(cell_fill(color = "#eaf4ea"), cell_text(weight = "bold")),
+    locations = cells_body(rows = Selected == "✓")
+  ) |>
+  tab_footnote(
+    footnote = "BIC in mclust convention: higher (less negative) = better fit.",
+    locations = cells_column_labels(columns = BIC)
+  ) |>
+  tab_footnote(
+    footnote = "Entropy > 0.70 indicates adequate profile separation; values near 1.0 indicate near-perfect classification.",
+    locations = cells_column_labels(columns = Entropy)
+  )
+```
+
+The five-profile solution was selected. It achieved the highest BIC across all k values and maintained adequate classification entropy (0.785). The six-profile solution had a marginally lower BIC and entropy below 0.70, indicating that the additional profile did not improve classification quality. The analytic sample consisted of N = 1,799 participants with complete data on all six indicators.
+
+### Profile descriptions
+
+The five profiles and their characteristics are summarized below. Mean values are on the original (unstandardized) scale. Auxiliary variables (% living alone, % owner-occupied) and the relocation outcome are shown for descriptive purposes.
+
+```{r}
+#| label: tbl-lpa-means
+#| tbl-cap: "LPA profile characteristics: indicator means and auxiliary variables (original scales)"
+tibble::tribble(
+  ~Profile,                         ~n,    ~intention, ~satisfaction, ~suitability, ~health, ~age,   ~cohesion, ~alone, ~owner, ~relocated,
+  "1 — Dissatisfied intenders",      400L,  "1.66",    "4.00",        "4.47",       "3.30",  "68.3", "2.02",    "34.2", "73.5", "26.2",
+  "2 — Satisfied older stayers",     574L,  "1.22",    "5.00",        "4.86",       "3.05",  "74.4", "2.31",    "23.0", "87.3", "11.3",
+  "3 — Eager movers",                104L,  "3.00",    "5.00",        "4.91",       "3.62",  "68.9", "2.14",    "26.9", "85.6", "72.1",
+  "4 — Environmentally pressured",   134L,  "2.06",    "2.19",        "3.99",       "3.17",  "67.2", "1.87",    "44.8", "61.2", "47.0",
+  "5 — Satisfied younger stayers",   587L,  "1.10",    "5.00",        "4.89",       "4.09",  "63.2", "2.22",    "25.4", "87.1", "13.1"
+) |>
+  gt() |>
+  cols_label(
+    intention    = html("Intention<br>(1–3)"),
+    satisfaction = html("Home<br>satisfaction<br>(1–5)"),
+    suitability  = html("Housing<br>suitability<br>(1–5)"),
+    health       = html("Self-rated<br>health<br>(1–5)"),
+    age          = html("Age<br>(years)"),
+    cohesion     = html("Neighborhood<br>cohesion<br>(1–3)"),
+    alone        = html("Living<br>alone (%)"),
+    owner        = html("Owner-<br>occupied (%)"),
+    relocated    = html("Relocated<br>(%)")
+  ) |>
+  tab_spanner(label = "LPA indicators (means)", columns = intention:cohesion) |>
+  tab_spanner(label = "Auxiliary variables", columns = alone:relocated) |>
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  ) |>
+  tab_style(
+    style     = list(cell_fill(color = "#fff3e0"), cell_text(weight = "bold")),
+    locations = cells_body(rows = Profile == "4 — Environmentally pressured")
+  ) |>
+  tab_footnote(
+    footnote = "Intention urgency: 1 = not within 2 years, 2 = within 1–2 years, 3 = within 1 year. Profile 2 is the reference group in the logistic regression below.",
+    locations = cells_column_labels(columns = intention)
+  ) |>
+  tab_footnote(
+    footnote = "Living alone and owner-occupied are auxiliary variables not used in LPA fitting.",
+    locations = cells_column_labels(columns = alone)
+  )
+```
+
+**Profile 1 — Dissatisfied intenders (n = 400; 26% relocated)**
+
+This profile groups older adults with a moderate level of moving intention (mean = 1.66) paired with below-average home satisfaction (4.00/5) and somewhat lower housing suitability (4.47/5 vs. around 4.87 for profiles 2, 3, and 5). Health and age are close to the overall sample mean. The combination of expressed intention and moderate dissatisfaction suggests that members of this group have recognized a housing mismatch and are considering a move, but have not acted with urgency. Over one in four (26%) relocated by T3, which is more than double the rate of the two settled profiles but well below the eager movers.
+
+**Profile 2 — Satisfied older stayers (n = 574; 11% relocated) — reference**
+
+This is the largest profile consisting of the oldest participants (mean age 74.4 years), with low moving intention (1.22), maximum home satisfaction (5.00/5), and strong housing suitability (4.86/5). Neighborhood cohesion is the highest of any profile (2.31/3). This group has the highest owner-occupancy rate (87.3%) and the lowest proportion living alone (23.0%). Their relocation rate of 11.3% is the lowest, reflecting a settled, housing-satisfied group that moves only when prompted by exceptional circumstances. This profile serves as the reference group in the logistic regression.
+
+**Profile 3 — Eager movers (n = 104; 72% relocated)**
+
+This is the smallest profile but with the highest relocation rate (72.1%). All members reported the most urgent intention category (mean = 3.00, maximum possible), yet home satisfaction (5.00) and suitability (4.91) are at or near the ceiling, as high as for Profile 2. Health is also the best of any profile (3.62). This pattern suggests these individuals are not moving away from a poor environment but rather moving toward something, perhaps a more suitable or desirable dwelling while they are still in good health. They are predominantly owners (85.6%) and their relocation rate is consistent with intentional, planned moves executed in favorable personal circumstances.
+
+**Profile 4 — Environmentally pressured (n = 134; 47% relocated)**
+
+This profile is theoretically the most distinctive and is highlighted in the tables. Members show moderate moving intention (2.06), but the defining feature is markedly low home satisfaction, with a mean of 2.19/5, substantially below all other profiles where satisfaction ranges from 4.00 to 5.00. Housing suitability is also the lowest at 3.99. Neighborhood cohesion is the lowest of any profile (1.87/3). Taken together, these indicators describe a profound person-environment mismatch: poor fit with the home and weak social ties to the neighborhood, even while stated intention to move is only moderate.
+
+The auxiliary variables add further texture. Nearly half (44.8%) live alone, the highest of any profile, and only 61.2% are owner-occupiers, the lowest proportion in the sample. Both factors are associated with structural vulnerability: living alone removes household-level resources for planning and executing a move, while renter status exposes individuals to involuntary displacement.
+
+**Profile 5 — Satisfied younger stayers (n = 587; 13% relocated)**
+
+This is the second-largest profile, with the lowest moving intention (1.10), maximum home satisfaction (5.00), highest self-rated health (4.09/5), and the youngest mean age (63.2 years). Neighborhood cohesion and suitability are near-ceiling. Relocation at 13.1% is low, comparable to Profile 2, but the demographic profile is distinctly different: these are younger, healthier adults with a strong housing fit who have likely registered on a waiting list as a precautionary measure rather than in response to an imminent need.
+
+The figure below shows the mean values across all six indicators for each profile:
+
+![Latent profile analysis: mean indicator values by profile (original scales)](figures/LPA_profiles.png){fig-alt="Parallel coordinates plot showing mean values of six indicators across five latent profiles." width="100%"}
+
+### Relocation odds by profile
+
+To quantify the association between profile membership and the probability of relocation, logistic regression was run with profile as a single categorical predictor and Profile 2 (satisfied older stayers) as the reference. No additional covariates were included: the profiles already integrate the underlying dimensions (age, health, satisfaction, intention) and adding individual indicators would partially undo the person-centered framing.
+
+```{r}
+#| label: tbl-lpa-regression
+#| tbl-cap: "LPA: Logistic regression — profile membership predicting relocation (reference: Profile 2, satisfied older stayers)"
+tibble::tribble(
+  ~Profile,                                ~OR,   ~`95% CI`,     ~p,
+  "1 — Dissatisfied intenders",            2.79,  "1.99–3.93",  "< 0.001",
+  "3 — Eager movers",                     20.2,   "12.4–33.8",  "< 0.001",
+  "4 — Environmentally pressured",         6.95,  "4.54–10.7",  "< 0.001",
+  "5 — Satisfied younger stayers",         1.18,  "0.83–1.68",   "0.35"
+) |>
+  gt() |>
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  ) |>
+  tab_style(
+    style     = list(cell_fill(color = "#fff3e0"), cell_text(weight = "bold")),
+    locations = cells_body(rows = Profile == "4 — Environmentally pressured")
+  ) |>
+  tab_footnote(
+    footnote = "Reference: Profile 2 — satisfied older stayers (n = 574; 11.3% relocated). OR = odds ratio.",
+    locations = cells_column_labels(columns = OR)
+  ) |>
+  cols_width(
+    Profile   ~ px(300),
+    OR        ~ px(65),
+    `95% CI`  ~ px(115),
+    p         ~ px(80)
+  )
+```
+
+### Interpretation
+
+The LPA results converge with and extend the variable-centered findings in several ways.
+
+**Intentions remain central, but are not sufficient.** Profile 3 (eager movers) has the highest odds of relocation by a wide margin (OR = 20.2), consistent with the dominant role of intentions in RQ1. What the profile analysis adds is the observation that these highly intentional individuals are also housing-satisfied, a combination that points to planned, proactive moves rather than reactive or forced relocation. The high rate of owner-occupancy (85.6%) and good health further support this interpretation: these are individuals who have chosen to move.
+
+**Person-environment mismatch predicts relocation even at moderate intention levels.** Profile 4 is the analytically and theoretically novel finding. Members of this group did not report the strongest intention category, yet nearly half (47%) relocated, and the profile as a whole had 6.95 times the odds of relocation relative to the settled reference group. This cannot be explained by intention alone: Profile 1 (dissatisfied intenders) has higher mean intention than Profile 4 but a lower relocation rate (26%). The critical difference is the depth of environmental mismatch in Profile 4: home satisfaction of 2.19 versus 4.00 for Profile 1, combined with the lowest neighborhood cohesion in the sample. These individuals appear to experience sufficient residential pressure that relocation occurs even without a clearly stated intent, consistent with Lawton's model of environmental press overriding individual preferences.
+
+**The two settled profiles behave similarly but for different reasons.** Profiles 2 and 5 are statistically indistinguishable from each other in relocation odds (both low), but represent structurally different groups. Profile 2 is older, less healthy, and has likely already optimized their housing situation over many years. Profile 5 is younger, healthier, and housing-satisfied for a different reason: they have not yet developed the housing needs that would prompt consideration of a move. The similar outcome (low relocation) arises from different underlying states, a distinction that variable-centered models cannot make.
+
+**Structural vulnerability concentrates in Profile 4.** The high proportion of single-person households (44.8%) and renters (38.8%) in Profile 4 is not incidental. Living alone reduces the social and logistical resources available to plan and execute a move; renter status exposes individuals to factors outside their control, such as lease termination or rent increases. The combination of housing dissatisfaction, weak neighborhood ties, and structural vulnerability makes this the group most at risk of forced or reactive relocation, which has implications for housing planning and proactive support provision.
+
 ## Project status
 
 | Milestone | Status |
@@ -585,10 +775,12 @@ These patterns are descriptive and cannot be formally tested within the current 
 | RQ1 Analysis | ✅ Complete |
 | RQ2 Analysis | ✅ Complete |
 | RQ3 Analysis | ✅ Complete |
-| RQ4 Analysis | ⏳ Pending |
+| RQ4 Analysis | ✅ Complete |
+| Survival analysis | ✅ Complete |
+| Latent profile analysis | ✅ Complete |
 | Table 1 | ✅ Complete |
-| Forest plots (RQ1, RQ2, RQ3) | ✅ Complete |
-| Manuscript drafting | 🔄 In progress |
+| Forest plots (RQ1–RQ4) | ✅ Complete |
+| Manuscript drafting | 🔄 In progress ||
 | Submission | ⏳ Pending |
 
 ## Repository and reproducibility
