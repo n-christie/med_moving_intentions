@@ -358,6 +358,71 @@ tbl_merge(
 
 ![Forest plot: baseline model vs full model among intenders (RQ3)](figures/RQ3_forest_plot.png){fig-alt="Forest plot comparing baseline and full models among intenders, with predictors grouped by moving intentions, demographics, housing factors, and obstacles." width="75%"}
 
+### RQ4: Among non-intenders, what predicts unexpected relocation?
+
+Of the 1,286 participants who did not expect to move within two years at baseline, 134 (10.4%) had relocated by T3. Among this group — unexpected movers — the predictors of relocation differed markedly from the full-sample analyses.
+
+Demographics (age, sex, self-rated health) were not associated with unexpected relocation in any model. Housing-related factors, by contrast, were strongly predictive:
+
+- **Home satisfaction** was the dominant predictor (OR = 0.50, 95% CI: 0.38–0.65, p < 0.001). The effect is notably stronger than in the full-sample model (OR ≈ 0.76–0.86 in RQ2), suggesting that housing dissatisfaction is a particularly potent trigger for reactive, unplanned moves.
+- **Housing tenure**: renters were nearly twice as likely to relocate unexpectedly as owners (OR = 1.91, 95% CI: 1.18–3.01, p = 0.007), consistent with involuntary displacement (e.g., lease termination, rent increases).
+- **Housing suitability** showed a positive association in the same direction as the suppression effect observed in RQ2 (OR ≈ 1.95–2.13, p < 0.05); this likely reflects collinearity with home satisfaction rather than a causal effect.
+- Neighborhood cohesion was not independently associated with unexpected relocation.
+
+Housing factors as a block added meaningfully to the model beyond demographics (LRT p < 0.001; ΔNagelkerke R² = 0.043), while demographics alone explained negligible variance (Nagelkerke R² = 0.006).
+
+```{r}
+#| label: tbl-rq4
+#| tbl-cap: "RQ4: Logistic regression — predictors of unexpected relocation among non-intenders"
+dat_rq4 <- dat |>
+  filter(as.numeric(VAR24_T1) == 3) |>
+  mutate(
+    owner = factor(
+      case_when(
+        as.numeric(VAR01_2_T1) == 1 ~ "Owner",
+        as.numeric(VAR01_2_T1) == 2 ~ "Renter",
+        TRUE ~ NA_character_
+      ),
+      levels = c("Owner", "Renter")
+    )
+  ) |>
+  filter(
+    !is.na(age), !is.na(sex), !is.na(srh),
+    complete.cases(pick(housing_suitability, home_satisfaction,
+                        neighbourhood_cohesion)),
+    !is.na(owner)
+  )
+
+m1_rq4 <- glm(relocated_f ~ age + sex + srh,
+               data = dat_rq4, family = binomial)
+m3_rq4 <- glm(relocated_f ~ age + sex + srh +
+                 housing_suitability + home_satisfaction +
+                 neighbourhood_cohesion + owner,
+               data = dat_rq4, family = binomial)
+
+tbl_merge(
+  list(
+    tbl_regression(m1_rq4, exponentiate = TRUE,
+                   label = list(age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05),
+    tbl_regression(m3_rq4, exponentiate = TRUE,
+                   label = list(age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)",
+                                housing_suitability    ~ "Housing suitability (1–5)",
+                                home_satisfaction      ~ "Home satisfaction (1–5)",
+                                neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)",
+                                owner                  ~ "Tenure")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05)
+  ),
+  tab_spanner = c("**M1: Demographics**", "**M3: Full model**")
+)
+```
+
+![Forest plot: demographics vs full model for unexpected relocation among non-intenders (RQ4)](figures/RQ4_forest_plot.png){fig-alt="Forest plot showing odds ratios for predictors of unexpected relocation among non-intenders, comparing demographics-only and full models." width="75%"}
+
 ## Further analysis: Survival analysis
 
 To complement the logistic regression results, a Cox proportional hazards model was fitted using exact relocation dates rather than the binary endpoint. This approach accounts for (a) the varying length of follow-up across participants (T1 surveys were completed between March and December 2021) and (b) right-censoring of participants who had not relocated by T3.
