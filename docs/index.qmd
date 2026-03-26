@@ -90,13 +90,13 @@ These estimates were virtually unchanged after adjusting for age and sex (Nagelk
 
 Among those who expected to move within a year, **71.4%** actually did so. Among those who expected to wait two or more years, only **10.4%** relocated.
 
-![Forest plot: unadjusted vs adjusted ORs for moving intentions predicting relocation (RQ1)](../output/figures/RQ1_forest_plot.png){fig-alt="Forest plot showing odds ratios for intention timeframe categories predicting relocation, unadjusted and adjusted for age and sex."}
+![Forest plot: unadjusted vs adjusted ORs for moving intentions predicting relocation (RQ1)](figures/RQ1_forest_plot.png){fig-alt="Forest plot showing odds ratios for intention timeframe categories predicting relocation, unadjusted and adjusted for age and sex."}
 
 ### RQ2: Housing factors add minimally beyond intentions
 
 Home satisfaction was the only housing factor with an independent association with relocation (OR ≈ 0.76–0.86; lower satisfaction associated with higher odds of relocation). Housing suitability and neighborhood cohesion did not independently predict relocation. Housing factors as a group added only marginally to the model beyond intentions (ΔNagelkerke R² = 0.008).
 
-![Forest plot: baseline model vs full housing model predicting relocation (RQ2)](../output/figures/RQ2_forest_plot.png){fig-alt="Forest plot comparing baseline and full housing models, with predictors grouped by moving intentions, demographics, and housing factors."}
+![Forest plot: baseline model vs full housing model predicting relocation (RQ2)](figures/RQ2_forest_plot.png){fig-alt="Forest plot comparing baseline and full housing models, with predictors grouped by moving intentions, demographics, and housing factors."}
 
 ### RQ3: Among intenders, who did not relocate?
 
@@ -109,7 +109,7 @@ Within this subgroup, the most notable findings were:
 - **Having dependents**: The only specific obstacle significantly associated with non-relocation (OR = 0.18, 95% CI: 0.03–0.74), though based on small numbers (n = 19 endorsing this item) and should be interpreted cautiously.
 - Housing factors and most other obstacles were not independently associated with non-relocation among intenders.
 
-![Forest plot: baseline model vs full model among intenders (RQ3)](../output/figures/RQ3_forest_plot.png){fig-alt="Forest plot comparing baseline and full models among intenders, with predictors grouped by moving intentions, demographics, housing factors, and obstacles."}
+![Forest plot: baseline model vs full model among intenders (RQ3)](figures/RQ3_forest_plot.png){fig-alt="Forest plot comparing baseline and full models among intenders, with predictors grouped by moving intentions, demographics, housing factors, and obstacles."}
 
 ## Project status
 
