@@ -12,27 +12,63 @@ This is a longitudinal survey study examining whether self-reported moving inten
 
 ## Research questions
 
-| RQ | Question | Primary variables |
-|----|----------|-------------------|
-| 1 | To what extent do self-reported moving intentions at baseline predict actual relocation over a three-year period? | `VAR24_T1`, `VAR25_T1`, `VAR21_*_T1` → `relocated` |
-| 2 | To what extent do housing-related factors at baseline predict relocation, independent of moving intentions? | `VAR13_*_T1`, `VAR14_T1`, `VAR16–19_T1`, household composition → `relocated` |
-| 3 | Among those who intended to move at baseline, which factors are associated with *not* having relocated? | Subset: intenders; predictors = obstacles (`VAR30_T1`, `VAR31_*_T1`), housing/neighbourhood |
-| 4 | (If sample size allows) Among those who did *not* intend to move, which factors predict unexpected relocation? | Subset: non-intenders; predictors = housing-related factors at T1 |  
+| RQ | Question | Primary variables | Status |
+|----|----------|-------------------|--------|
+| 1 | To what extent do self-reported moving intentions at baseline predict actual relocation over a three-year period? | `VAR24_T1` → `relocated` | ✅ Complete |
+| 2 | To what extent do housing-related factors at baseline predict relocation, independent of moving intentions? | `VAR13_*_T1`, `VAR14_T1`, `VAR16–18_T1` → `relocated` | ✅ Complete |
+| 3 | Among those who intended to move at baseline, which factors are associated with not having relocated? | Subset: intenders; predictors = obstacles (`VAR30_T1`, `VAR31_*_T1`), housing | ✅ Complete |
+| 4 | Among those who did not intend to move, which factors predict unexpected relocation? | Subset: non-intenders; predictors = housing factors, tenure | ✅ Complete |
+
+## Key results summary
+
+### RQ1
+- Intentions strongly predict relocation: OR = 22.1 (< 1 year vs 2+ years), OR = 3.55 (1–2 years vs 2+ years)
+- 71.4% of urgent intenders relocated; 10.4% of non-intenders relocated
+- Nagelkerke R² = 0.29 after adjusting for age, sex, SRH
+
+### RQ2
+- Home satisfaction is the only housing factor independently associated with relocation (OR ≈ 0.76–0.86, p < 0.05)
+- Housing suitability shows a suppression effect when entered with satisfaction (collinearity)
+- Neighborhood cohesion not significant
+- Housing factors add minimally beyond intentions (ΔNagelkerke R² = 0.008)
+
+### RQ3 (intenders only, n ≈ 587 complete cases)
+- Intention urgency remains dominant within intenders (OR = 5.8 for < 1 year vs 1–2 years)
+- Older age associated with lower odds of follow-through (OR = 0.96 per year)
+- Having dependents: OR = 0.18 (p = 0.035), but n = 19 endorsed, wide CI
+- Housing factors and most obstacle types not significant in this subset
+
+### RQ4 (non-intenders only, n = 1,221 complete cases; 130 relocated)
+- Demographics (age, sex, SRH) not predictive of unexpected relocation
+- Home satisfaction dominant predictor (OR = 0.50, 95% CI: 0.38–0.65, p < 0.001) — effect notably stronger than in full-sample models
+- Renter vs owner: OR = 1.91 (95% CI: 1.18–3.01, p = 0.007) — renters without stated intentions are vulnerable to involuntary displacement
+- Housing suitability positive association (OR ≈ 2.1) likely reflects suppression/collinearity with satisfaction, not a causal effect
+- Housing factors as a block: LRT p < 0.001 vs demographics alone; ΔNagelkerke R² = 0.043
+
+### Further analysis: Survival analysis
+- Cox proportional hazards models fitted using exact relocation dates (`reloc_date1`) and `Date_T1`
+- Censoring: `Date_T3` for T3 respondents; `2024-11-13` (study end) for 545 T3 non-respondents (administrative censoring — treat as a caveat)
+- PH assumption violated for `intention_timeframe` (Schoenfeld p < 0.001); all other predictors satisfy PH
+- Stratified Cox model (stratify on `intention_timeframe`) gives valid covariate HRs: home satisfaction HR = 0.84 (p = 0.005), other housing factors non-significant, consistent with logistic regression
+
+### Macro-economic context
+- Study period (2021–2024) coincided with the Swedish Riksbank tightening cycle (0% → 4% benchmark rate, April 2022 – September 2023) and a ~20% peak-to-trough housing price collapse in 2022–2023
+- Relocation timing plot shows a sharp drop in quarterly relocations from Q3 2022, recovering gradually in 2023–2024
+- Tenure-stratified timing plot shows sustained suppression in owners (market lock-in) and a different volatile pattern in renters (possible inflation-driven displacement in Q3 2022 then sharp drop)
+- These patterns are descriptive only; the survey has no time-varying market perception or financial capacity measures
+
 **Key predictor groups at T1:**
 
-| Variable(s) | Content |
-|-------------|---------|
-| `VAR21_1–17_T1` | Reasons for joining housing waiting list |
-| `VAR24_T1` | Expected timeframe to needing to move |
-| `VAR25_T1` | Self-rated likelihood of having moved within two years |
-| `VAR26_1–7_T1` | Preferred housing type |
-| `VAR27_T1` | Primary motivation for moving |
-| `VAR30_T1` | Perceived obstacles to moving |
-| `VAR31_1–10_T1` | Specific obstacles (multi-select) |
-| `VAR13_1–4_T1` | Housing suitability (physical environment) |
-| `VAR14_T1` | Home satisfaction |
-| `VAR16–18_T1` | Neighbourhood social cohesion |
-| `VAR19_T1` | Neighbourhood amenities |
+| Variable(s) | Content | Used in |
+|-------------|---------|---------|
+| `VAR24_T1` | Expected timeframe to needing to move (primary intention measure) | RQ1–3 |
+| `VAR13_1–4_T1` | Housing suitability (physical environment); composite `housing_suitability` | RQ2–4 |
+| `VAR14_T1` | Home satisfaction; recoded as `home_satisfaction` | RQ2–4 |
+| `VAR16–18_T1` | Neighbourhood social cohesion; composite `neighbourhood_cohesion` | RQ2–4 |
+| `VAR30_T1` | Perceived obstacles to moving (any) | RQ3 |
+| `VAR31_1–10_T1` | Specific obstacles (multi-select); recoded as `obs_*` | RQ3 |
+| `VAR34_T1` | Self-rated health; recoded as `srh` (numeric 1–5) | All (covariate) |
+| `VAR01_2_T1` | Home ownership (Yes/No); used as `owner` factor in RQ4 | RQ4, macro context |
 
 ## Repository layout
 
@@ -47,7 +83,7 @@ This is a longitudinal survey study examining whether self-reported moving inten
 | `output/figures/` | Saved plots |
 | `output/tables/` | Saved tables |
 | `paper/` | Manuscript drafts |
-| `docs/` | About/project page for co-authors |
+| `docs/` | About/project page for co-authors (rendered to GitHub Pages) |
 | `references/` | Reference papers and background literature |
 
 ## Conventions
@@ -57,6 +93,7 @@ This is a longitudinal survey study examining whether self-reported moving inten
 - Use the base R pipe `|>` (not `%>%`)
 - Scripts are numbered and should be run in order within each stage
 - All figures saved to `output/figures/`, tables to `output/tables/`
+- Figures used in the docs page are also copied to `docs/figures/`
 - Raw data files must never be overwritten or deleted
 
 ## Pipeline order
@@ -69,8 +106,30 @@ Scripts must be run in this order:
 | 2 | `scripts/01_clean/01_import.R` | Each session — imports raw data, recodes NAs, parses dates, applies English labels | `data/processed/survey_clean.rds` |
 | 3 | `scripts/01_clean/02_recode.R` | Each session — all deliberate variable recodings and composite creation; **every decision is documented here** | `data/processed/survey_analysis.rds` |
 | 4 | `scripts/02_analyze/0N_RQN_*.R` | As needed — analysis scripts load `survey_analysis.rds` only | results / model objects |
+| 5 | `scripts/03_visualize/0N_*.R` | As needed — visualization scripts load `survey_analysis.rds` only | figures in `output/figures/` and `docs/figures/` |
 
 Analysis scripts must never perform their own data recodings. All transformations belong in `02_recode.R`.
+
+## Analysis scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/02_analyze/01_RQ1_intentions.R` | Logistic regression: intentions predicting relocation (M1 unadjusted, M2 adjusted) |
+| `scripts/02_analyze/02_RQ2_housing.R` | Logistic regression: housing factors predicting relocation (M2–M6) |
+| `scripts/02_analyze/03_RQ3_intenders.R` | Logistic regression: predictors of relocation among intenders (M1–M4) |
+| `scripts/02_analyze/04_survival.R` | Cox PH models, PH assumption test, stratified Cox model |
+| `scripts/02_analyze/05_RQ4_nonintenders.R` | Logistic regression: predictors of unexpected relocation among non-intenders (M1–M3) |
+
+## Visualization scripts
+
+| Script | Output |
+|--------|--------|
+| `scripts/03_visualize/00_table1_descriptives.R` | Table 1 (descriptive stats by relocation status) — Word and HTML |
+| `scripts/03_visualize/01_RQ1_forest_plot.R` | Forest plot: unadjusted vs adjusted ORs for RQ1 |
+| `scripts/03_visualize/02_RQ2_forest_plot.R` | Forest plot: baseline vs full housing model for RQ2 |
+| `scripts/03_visualize/03_RQ3_forest_plot.R` | Forest plot: baseline vs full model for RQ3 (intenders) |
+| `scripts/03_visualize/04_descriptive_figures.R` | Bar charts: relocation rate by intention group and by age group |
+| `scripts/03_visualize/05_RQ4_forest_plot.R` | Forest plot: demographics vs full model for RQ4 (non-intenders) |
 
 ## Key files
 
@@ -79,13 +138,17 @@ Analysis scripts must never perform their own data recodings. All transformation
 - `data/processed/survey_clean.rds` — cleaned, labelled data (generated by step 2)
 - `data/processed/survey_analysis.rds` — analysis-ready data with composites and recoded variables (generated by step 3)
 - `scripts/01_clean/02_recode.R` — **read this before interpreting any variable in the analysis**
+- `docs/index.qmd` — about page for co-authors; renders to GitHub Pages at https://n-christie.github.io/med_moving_intentions/
 
 ## Data notes
 
-- `relocated` is binary (0 = No, 1 = Yes); ~20% of participants relocated over the study period
+- `relocated` is binary (0 = No, 1 = Yes); 20.6% of participants relocated over the study period
 - 3 rows have missing `LopNr_PersonNr` (participant ID) — treat with caution or exclude
 - T1 uses 2-digit variable names (e.g. `VAR06_T1`); T2/T3 use 3-digit (e.g. `VAR006_T2`)
 - Special NA codes in raw data: 99, 888, 9999 — already recoded to `NA` in `survey_clean.rds`
+- `Date_T1`, `Date_T3`, `reloc_date1/2/3` are parsed Date columns available for survival analysis
+- 545 participants are missing `Date_T3` (T3 non-respondents); administratively censored at `2024-11-13` in survival analysis
+- `VAR25_T1` (subjective likelihood of moving within 2 years) has 68.6% missing — not used as a predictor
 
 ## Writing conventions
 
@@ -100,3 +163,5 @@ All written text (manuscripts, the about page, comments, documentation) must fol
 - Ask before making changes to scripts in `scripts/02_analyze/` or `scripts/03_visualize/`
 - Do not commit raw data files
 - When adding new scripts, follow the existing naming convention (`NN_description.R`)
+- All figures used in the docs page must also be copied to `docs/figures/` after saving to `output/figures/`
+- The about page (`docs/index.qmd`) must be re-rendered and the resulting `docs/index.html` committed whenever content changes
