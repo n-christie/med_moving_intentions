@@ -1,0 +1,52 @@
+---
+title: "Medical Moving Intentions"
+subtitle: "A survey-based study on [topic]"
+author:
+  - name: "[Your Name]"
+    affiliation: "[Institution]"
+    email: "[email]"
+  - name: "[Co-author Name]"
+    affiliation: "[Institution]"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 2
+---
+
+## About this project
+
+*[1–2 sentence summary of the research question and why it matters.]*
+
+## Status
+
+| Milestone | Status |
+|-----------|--------|
+| Data collection | ✅ Complete |
+| Data cleaning | 🔄 In progress |
+| Analysis | ⏳ Pending |
+| Writing | ⏳ Pending |
+| Submission | ⏳ Pending |
+
+## Research question
+
+*[State the primary research question(s).]*
+
+## Data
+
+*[Brief description of the survey: how many respondents, when collected, key variables.]*
+
+## Preliminary findings
+
+*[Fill in as the project progresses.]*
+
+## Team
+
+| Name | Role | Institution |
+|------|------|-------------|
+| [Name] | PI | [Institution] |
+| [Name] | Co-author | [Institution] |
+
+## Contact
+
+For questions about this project, contact [name] at [email].
