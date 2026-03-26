@@ -358,6 +358,122 @@ tbl_merge(
 
 ![Forest plot: baseline model vs full model among intenders (RQ3)](figures/RQ3_forest_plot.png){fig-alt="Forest plot comparing baseline and full models among intenders, with predictors grouped by moving intentions, demographics, housing factors, and obstacles." width="75%"}
 
+## Further analysis: Survival analysis
+
+To complement the logistic regression results, a Cox proportional hazards model was fitted using exact relocation dates rather than the binary endpoint. This approach accounts for (a) the varying length of follow-up across participants (T1 surveys were completed between March and December 2021) and (b) right-censoring of participants who had not relocated by T3.
+
+**Censoring rules:** Participants who relocated were assigned their exact relocation date. Non-relocators who responded at T3 were censored at their T3 survey date. Non-relocators who did not respond at T3 (n = 545) were administratively censored at the last T3 survey date (2024-11-13). Results should be interpreted with this caveat, as non-response may not be independent of relocation or health status.
+
+```{r}
+#| label: surv-setup
+study_end <- as.Date("2024-11-13")
+
+surv_dat <- dat |>
+  filter(!is.na(Date_T1), !is.na(intention_timeframe),
+         !is.na(age), !is.na(sex), !is.na(srh)) |>
+  mutate(
+    end_date    = case_when(
+      relocated == 1  ~ reloc_date1,
+      !is.na(Date_T3) ~ Date_T3,
+      TRUE            ~ study_end
+    ),
+    time_months = as.numeric(end_date - Date_T1) / 30.44,
+    event       = as.integer(relocated == 1)
+  ) |>
+  filter(time_months > 0)
+
+surv_dat_m3 <- surv_dat |>
+  filter(complete.cases(pick(housing_suitability, home_satisfaction,
+                             neighbourhood_cohesion)))
+
+cox_m1 <- survival::coxph(
+  survival::Surv(time_months, event) ~ intention_timeframe,
+  data = surv_dat)
+
+cox_m2 <- survival::coxph(
+  survival::Surv(time_months, event) ~ intention_timeframe + age + sex + srh,
+  data = surv_dat)
+
+cox_strat <- survival::coxph(
+  survival::Surv(time_months, event) ~ survival::strata(intention_timeframe) +
+    age + sex + srh + housing_suitability + home_satisfaction + neighbourhood_cohesion,
+  data = surv_dat_m3)
+```
+
+### Cumulative incidence by intention group
+
+The figure below shows the cumulative probability of relocation over follow-up time, stratified by baseline intention group. The strong early rise in the `< 1 year` group reflects rapid follow-through among those with urgent intentions; the curve then plateaus after approximately 18 months as the remaining non-movers in this group converge toward the rate of the other groups.
+
+![Cumulative relocation probability by baseline intention (Kaplan-Meier)](figures/fig_km_intention.png){fig-alt="Kaplan-Meier cumulative incidence curves by intention group." width="75%"}
+
+### Cox proportional hazards models
+
+```{r}
+#| label: tbl-cox
+#| tbl-cap: "Cox proportional hazards models for time to relocation"
+tbl_merge(
+  list(
+    tbl_regression(cox_m1, exponentiate = TRUE,
+                   label = list(intention_timeframe ~ "Intention timeframe")) |>
+      modify_header(estimate ~ "**HR**") |>
+      bold_p(t = 0.05),
+    tbl_regression(cox_m2, exponentiate = TRUE,
+                   label = list(intention_timeframe ~ "Intention timeframe",
+                                age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)")) |>
+      modify_header(estimate ~ "**HR**") |>
+      bold_p(t = 0.05)
+  ),
+  tab_spanner = c("**Cox M1: Unadjusted**", "**Cox M2: Adjusted**")
+)
+```
+
+### Proportional hazards assumption
+
+```{r}
+#| label: tbl-ph
+#| tbl-cap: "Schoenfeld residuals test of proportional hazards (Cox M2)"
+ph <- survival::cox.zph(cox_m2)
+tibble::tibble(
+  Term  = c("Intention timeframe", "Age", "Sex", "Self-rated health", "Global test"),
+  `χ²`  = round(ph$table[, "chisq"], 3),
+  df    = ph$table[, "df"],
+  p     = round(ph$table[, "p"], 4)
+) |>
+  gt::gt() |>
+  gt::tab_style(
+    style     = gt::cell_text(weight = "bold"),
+    locations = gt::cells_body(rows = p < 0.05)
+  )
+```
+
+The proportional hazards assumption is **violated for intention timeframe** (p < 0.001), consistent with the KM curves: the hazard of relocation in the `< 1 year` group is very high early in follow-up but attenuates over time as the early movers are exhausted. All other predictors satisfy the PH assumption.
+
+The Schoenfeld residual plots below illustrate this pattern:
+
+![Schoenfeld residuals for intention timeframe (Cox M2)](figures/fig_schoenfeld.png){fig-alt="Schoenfeld residual plots showing time-varying coefficients for intention 1-2 years and < 1 year." width="80%"}
+
+### Stratified Cox model
+
+To obtain valid covariate estimates unaffected by the PH violation, a stratified Cox model was fitted with intention timeframe as the stratifying variable. This removes the HR for intention (shown by the KM curves instead) but ensures unbiased estimates for age, sex, health, and housing factors.
+
+```{r}
+#| label: tbl-cox-strat
+#| tbl-cap: "Stratified Cox model (stratified by intention timeframe)"
+tbl_regression(cox_strat, exponentiate = TRUE,
+               label = list(age ~ "Age (per year)", sex ~ "Sex",
+                            srh ~ "Self-rated health (1–5)",
+                            housing_suitability    ~ "Housing suitability (1–5)",
+                            home_satisfaction      ~ "Home satisfaction (1–5)",
+                            neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)")) |>
+  modify_header(estimate ~ "**HR**") |>
+  bold_p(t = 0.05) |>
+  modify_caption("Stratified Cox model: HRs for covariates, stratified by intention timeframe.
+                  Reference: Man. n = 1,828.")
+```
+
+Results from the stratified Cox model are consistent with logistic regression: lower home satisfaction is associated with a higher hazard of relocation (HR = 0.84, p = 0.005), while housing suitability shows a positive association in the same direction as the suppression effect noted in RQ2. Neighborhood cohesion, sex, and self-rated health were not independently associated with time to relocation.
+
 ## Project status
 
 | Milestone | Status |
