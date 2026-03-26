@@ -1,5 +1,5 @@
 library(tidyverse)
-library(tidyLPA)
+library(mclust)
 
 # ── Overview ──────────────────────────────────────────────────────────────────
 # Latent Profile Analysis (LPA) of baseline person-environment characteristics.
@@ -39,9 +39,9 @@ lpa_dat <- df |>
   filter(!is.na(relocated_f)) |>
   mutate(
     # Higher score = more urgent intention
-    intention_num = 4 - as.numeric(VAR24_T1),
-    lives_alone   = if_else(as.numeric(VAR11_1_T1) == 1, 1L, 0L),
-    owner_num     = if_else(as.numeric(VAR01_2_T1) == 1, 1L, 0L)
+    intention_num = 4 - haven::zap_labels(VAR24_T1),
+    lives_alone   = if_else(haven::zap_labels(VAR11_1_T1) == 1, 1L, 0L),
+    owner_num     = if_else(haven::zap_labels(VAR01_2_T1) == 1, 1L, 0L)
   ) |>
   filter(
     complete.cases(pick(intention_num, home_satisfaction, housing_suitability,
@@ -56,57 +56,51 @@ indicators <- c("intention_num", "home_satisfaction", "housing_suitability",
                  "srh", "age", "neighbourhood_cohesion")
 
 lpa_scaled <- lpa_dat |>
-  mutate(across(all_of(indicators), scale))
+  mutate(across(all_of(indicators), \(x) as.numeric(scale(x))))
 
-# ── Fit LPA models: k = 2 to 6 ───────────────────────────────────────────────
-# Model 1: equal variances, zero covariances (most parsimonious)
-# Model 3: varying variances, zero covariances (allows profiles to differ
-#           in spread, more flexible)
-cat("Fitting LPA models...\n")
+# ── Fit LPA models: k = 2 to 6 (mclust EEI / VVI) ───────────────────────────
+# EEI: equal variance, axis-aligned (simplest; equivalent to tidyLPA model 1)
+# VVI: varying variance, axis-aligned (more flexible; equivalent to model 3)
+# Both exclude covariances between indicators (axis-aligned).
+cat("Fitting LPA models (EEI, k = 2–6)...\n")
+X <- lpa_scaled |> select(all_of(indicators)) |> as.matrix()
 
-models_m1 <- lpa_scaled |>
-  select(all_of(indicators)) |>
-  estimate_profiles(2:6, models = 1)
+fit_summary <- map_dfr(2:6, \(k) {
+  eei <- Mclust(X, G = k, modelNames = "EEI", verbose = FALSE)
+  vvi <- Mclust(X, G = k, modelNames = "VVI", verbose = FALSE)
+  bind_rows(
+    tibble(model = "EEI", k = k,
+           BIC     = if (!is.null(eei)) round(eei$bic, 1)     else NA,
+           loglik  = if (!is.null(eei)) round(eei$loglik, 1)  else NA,
+           entropy = if (!is.null(eei)) {
+             probs <- eei$z; round(1 + sum(probs * log(probs + 1e-10)) /
+                                     (nrow(probs) * log(k)), 3) } else NA),
+    tibble(model = "VVI", k = k,
+           BIC     = if (!is.null(vvi)) round(vvi$bic, 1)     else NA,
+           loglik  = if (!is.null(vvi)) round(vvi$loglik, 1)  else NA,
+           entropy = if (!is.null(vvi)) {
+             probs <- vvi$z; round(1 + sum(probs * log(probs + 1e-10)) /
+                                     (nrow(probs) * log(k)), 3) } else NA)
+  )
+})
 
-models_m3 <- lpa_scaled |>
-  select(all_of(indicators)) |>
-  estimate_profiles(2:6, models = 3)
-
-# ── Model fit comparison ───────────────────────────────────────────────────────
-cat("\n=== Model fit: equal variances (Model 1) ===\n")
-get_fit(models_m1) |>
-  select(Model, Classes, AIC, BIC, Entropy, n_min, n_max) |>
-  mutate(across(c(AIC, BIC), \(x) round(x, 1)),
-         Entropy = round(Entropy, 3)) |>
-  print()
-
-cat("\n=== Model fit: varying variances (Model 3) ===\n")
-get_fit(models_m3) |>
-  select(Model, Classes, AIC, BIC, Entropy, n_min, n_max) |>
-  mutate(across(c(AIC, BIC), \(x) round(x, 1)),
-         Entropy = round(Entropy, 3)) |>
-  print()
+cat("\n=== Model fit comparison (higher BIC = better in mclust) ===\n")
+print(fit_summary)
 
 # ── Select best model ─────────────────────────────────────────────────────────
-# Update k and model type here based on fit statistics above.
-# Rule of thumb: lowest BIC with entropy > 0.80 and smallest class n > 50.
-best_k     <- 5    # update after reviewing fit table
-best_model <- 1    # update if Model 3 fits substantially better
+# Choose k and model with highest BIC and entropy > 0.70, min class n > 50.
+# Update after reviewing the table above.
+best_k     <- 5
+best_mname <- "EEI"
 
-cat("\n--- Fitting selected model: k =", best_k,
-    ", model type =", best_model, "---\n")
-
-fit_selected <- lpa_scaled |>
-  select(all_of(indicators)) |>
-  estimate_profiles(best_k, models = best_model)
+cat("\n--- Fitting selected model: k =", best_k, best_mname, "---\n")
+fit_selected <- Mclust(X, G = best_k, modelNames = best_mname, verbose = FALSE)
+cat("BIC:", round(fit_selected$bic, 1), "\n")
 
 # ── Extract profile assignments ───────────────────────────────────────────────
-profiles <- get_data(fit_selected) |>
-  select(Class) |>
-  bind_cols(lpa_dat |> select(
-    all_of(indicators), lives_alone, owner_num, relocated_f, age
-  )) |>
-  mutate(Class = factor(Class))
+profiles <- lpa_dat |>
+  mutate(Class = factor(fit_selected$classification)) |>
+  select(Class, all_of(indicators), lives_alone, owner_num, relocated_f)
 
 cat("\n=== Profile sizes ===\n")
 profiles |> count(Class) |>
@@ -146,7 +140,16 @@ profiles |>
 # ── Logistic regression: profile membership predicting relocation ─────────────
 # Use profile with highest satisfaction / lowest relocation rate as reference.
 # Update ref_class after reviewing the profile means table above.
-ref_class <- levels(profiles$Class)[1]   # update as needed
+# Set reference to profile with highest satisfaction / lowest relocation rate
+# after reviewing the means table. Update ref_class as needed.
+ref_class <- profiles |>
+  group_by(Class) |>
+  summarise(sat = mean(home_satisfaction), reloc = mean(relocated_f == "Yes")) |>
+  slice_max(sat, n = 1) |>
+  pull(Class) |>
+  as.character()
+
+cat("Reference class (highest satisfaction):", ref_class, "\n")
 
 cat("\n=== Logistic regression: profile → relocation ===\n")
 m_lpa <- glm(
