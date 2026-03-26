@@ -16,8 +16,8 @@ Thumbs.db
 *_files/
 .quarto/
 
-# Rendered docs (optional — remove if you want to commit the rendered about page)
-docs/*.html
+# Reference PDFs — large files, often copyrighted
+references/
 
 # Sensitive / credentials
 .env
