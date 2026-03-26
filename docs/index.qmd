@@ -60,7 +60,7 @@ Most participants (82%) owned their home; just over half (53%) lived in multifam
 
 **Outcome:** Actual relocation between T1 and T3, recorded as binary (`relocated`: 0 = No, 1 = Yes) and as a count (`nr_reloc`).
 
-At baseline, approximately 43% of participants expected to move within two years, with most citing wanting a more suitable or attractive dwelling as their primary reason for being listed with a housing company.
+At baseline, approximately 31% of participants (n = 612) expected to move within two years, with most citing wanting a more suitable or attractive dwelling as their primary reason for being listed with a housing company.
 
 ## Longitudinal results (three-year follow-up)
 
