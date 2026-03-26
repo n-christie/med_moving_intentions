@@ -64,6 +64,20 @@ m4_rq3 <- glm(
 )
 ```
 
+## Abstract
+
+**Background:** A large and growing number of older adults in Sweden are registered on housing company interest lists, signaling anticipated relocation needs. Yet the degree to which expressed moving intentions translate into actual moves, and which factors facilitate or obstruct that transition, remains poorly understood.
+
+**Objective:** To examine whether self-reported moving intentions and housing-related factors at baseline predict actual relocation over a three-year period, and to identify factors associated with non-relocation among those who intended to move.
+
+**Methods:** Prospective longitudinal survey study with three time points (T1: 2021, T2: 2022, T3: 2024) among adults aged 55 or older registered on housing company interest lists in Sweden (N = 1,961). Binary logistic regression was used to model the probability of relocation. Models were built sequentially, beginning with moving intentions and demographics, then adding housing-related factors (suitability, satisfaction, neighborhood cohesion) and perceived obstacles.
+
+**Results:** Over the three-year period, 20.6% of participants (n = 404) relocated. Baseline moving intentions were the dominant predictor: compared to those expecting to move in two or more years, those expecting to move within one year had over 20-fold higher odds of relocation (OR = 22.1, 95% CI: 15.7–31.3), and 71.4% of this group actually relocated. Home satisfaction was the only housing-related factor independently associated with relocation (OR ≈ 0.76–0.86), though housing factors as a block added minimally beyond intentions (ΔNagelkerke R² = 0.008). Among the 609 intenders, 56% had not relocated by T3. Within this group, stronger intention urgency (OR = 5.8), younger age (OR = 0.96 per year), and having dependents (OR = 0.18) were associated with relocation, while housing factors and most obstacle types were not independently predictive.
+
+**Conclusions:** Moving intentions are the strongest and most consistent predictor of actual relocation among older adults on housing interest lists. Housing dissatisfaction contributes modestly and independently. Among those who intended to move, a majority did not follow through, with older age and having dependents as the most notable barriers. Findings highlight the gap between expressed intention and realized relocation, with implications for housing planning and service provision for older adults.
+
+---
+
 ## Background
 
 Population aging, combined with a growing shortage of housing adapted to the needs of older adults, makes understanding residential relocation among older people an increasingly important public health concern. In Sweden, as in many other countries, a significant proportion of older adults are listed on housing company waiting lists, signaling an interest in or need for future relocation. Yet the degree to which such expressed intentions translate into actual moves, and which factors facilitate or hinder that transition, remains poorly understood.
@@ -124,6 +138,17 @@ Among those who expected to move within a year, **71.4%** actually did so. Among
 
 ![Relocation rates by baseline moving intention](figures/fig_relocation_by_intention.png){fig-alt="Bar chart showing relocation rates by intention timeframe." width="70%"}
 
+**Model equations** (reference category: intention 2+ years; Man):
+
+$$
+\begin{aligned}
+\text{M1:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_2\,\text{Int}_{<1\,\text{yr}} \\[6pt]
+\text{M2:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_2\,\text{Int}_{<1\,\text{yr}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex}
+\end{aligned}
+$$
+
+where $p_i = P(\text{relocated}_i = 1)$ and logit$(p) = \log(p / (1-p))$.
+
 ```{r}
 #| label: tbl-rq1
 #| tbl-cap: "RQ1: Logistic regression — moving intentions predicting relocation"
@@ -149,6 +174,16 @@ tbl_merge(
 ### RQ2: Housing factors add minimally beyond intentions
 
 Home satisfaction was the only housing factor with an independent association with relocation (OR ≈ 0.76–0.86; lower satisfaction associated with higher odds of relocation). Housing suitability and neighborhood cohesion did not independently predict relocation. Housing factors as a group added only marginally to the model beyond intentions (ΔNagelkerke R² = 0.008).
+
+**Model equations** (M2 is carried forward from RQ1; M6 adds housing factors):
+
+$$
+\begin{aligned}
+\text{M2:} \quad \text{logit}(p_i) &= \beta_0 + \boldsymbol{\beta}_{\text{int}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} \\[6pt]
+\text{M6:} \quad \text{logit}(p_i) &= \beta_0 + \boldsymbol{\beta}_{\text{int}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} \\
+  &\quad + \beta_5\,\text{Suitability} + \beta_6\,\text{Satisfaction} + \beta_7\,\text{Cohesion}
+\end{aligned}
+$$
 
 ```{r}
 #| label: tbl-rq2
@@ -188,6 +223,19 @@ Within this subgroup, the most notable findings were:
 - Housing factors and most other obstacles were not independently associated with non-relocation among intenders.
 
 ![Relocation rates by age group](figures/fig_relocation_by_age.png){fig-alt="Bar chart showing relocation rates by age group." width="70%"}
+
+**Model equations** (intender subset only; reference: intention 1–2 years, Man):
+
+$$
+\begin{aligned}
+\text{M1:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{<1\,\text{yr}} + \beta_2\,\text{Age} + \beta_3\,\text{Sex} \\[6pt]
+\text{M4:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{<1\,\text{yr}} + \beta_2\,\text{Age} + \beta_3\,\text{Sex} \\
+  &\quad + \beta_4\,\text{Suitability} + \beta_5\,\text{Satisfaction} + \beta_6\,\text{Cohesion} \\
+  &\quad + \beta_7\,\text{AnyObstacle} + \sum_{k=8}^{14}\beta_k\,\text{Obstacle}_k
+\end{aligned}
+$$
+
+Obstacle items ($k = 8\ldots14$): financial, limited supply, no energy to move, own health, partner health, dependents, bulky goods.
 
 ```{r}
 #| label: tbl-rq3
