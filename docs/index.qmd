@@ -68,13 +68,13 @@ m4_rq3 <- glm(
 
 **Background:** A large and growing number of older adults in Sweden are registered on housing company interest lists, signaling anticipated relocation needs. Yet the degree to which expressed moving intentions translate into actual moves, and which factors facilitate or obstruct that transition, remains poorly understood.
 
-**Objective:** To examine whether self-reported moving intentions and housing-related factors at baseline predict actual relocation over a three-year period, and to identify factors associated with non-relocation among those who intended to move.
+**Objective:** To examine whether self-reported moving intentions and housing-related factors at baseline predict actual relocation over a three-year period, to identify factors associated with non-relocation among those who intended to move, and to examine which factors predict unexpected relocation among those who did not intend to move.
 
-**Methods:** Prospective longitudinal survey study with three time points (T1: 2021, T2: 2022, T3: 2024) among adults aged 55 or older registered on housing company interest lists in Sweden (N = 1,961). Binary logistic regression was used to model the probability of relocation. Models were built sequentially, beginning with moving intentions and demographics (age, sex, self-rated health), then adding housing-related factors (suitability, satisfaction, neighborhood cohesion) and perceived obstacles.
+**Methods:** Prospective longitudinal survey study with three time points (T1: 2021, T2: 2022, T3: 2024) among adults aged 55 or older registered on housing company interest lists in Sweden (N = 1,961). Binary logistic regression was used to model the probability of relocation, with models built sequentially from intentions and demographics through housing factors, perceived obstacles, and housing tenure. Cox proportional hazards models were fitted using exact relocation dates to account for varying follow-up length; a stratified Cox model was used to address a proportional hazards violation for intention timeframe. Latent profile analysis (LPA) was used to identify person-centered profiles defined by intention urgency, home satisfaction, housing suitability, self-rated health, age, and neighborhood cohesion.
 
 **Results:** Over the three-year period, 20.6% of participants (n = 404) relocated. Baseline moving intentions were the dominant predictor: compared to those expecting to move in two or more years, those expecting to move within one year had over 20-fold higher odds of relocation (OR = 22.1, 95% CI: 15.7–31.3), and 71.4% of this group actually relocated. Home satisfaction was the only housing-related factor independently associated with relocation in the full sample (OR ≈ 0.76–0.86), though housing factors as a block added minimally beyond intentions (ΔNagelkerke R² = 0.008). Self-rated health was included as a covariate throughout but was not independently associated with relocation in any model (ORs 1.09–1.14, all p > 0.17). Among the 609 intenders, 56% had not relocated by T3; within this group, stronger intention urgency (OR = 5.8), younger age (OR = 0.96 per year), and having dependents (OR = 0.18) were associated with relocation, while housing factors and most specific obstacles were not. Among the 1,286 non-intenders, 10.4% relocated unexpectedly. In this group, housing dissatisfaction was the dominant predictor (OR = 0.50, 95% CI: 0.38–0.65), with an effect notably stronger than in the full-sample model, and renter status was associated with nearly double the odds of unexpected relocation compared to owners (OR = 1.91, 95% CI: 1.18–3.01). Demographics were not predictive of unexpected relocation.
 
-**Conclusions:** Moving intentions are the strongest predictor of relocation, but housing dissatisfaction independently predicts relocation across the intention spectrum — and is the primary driver of unexpected moves among those who did not intend to relocate. The substantial gap between intention and action among intenders, combined with the renter vulnerability effect among non-intenders, points to structural and market-level constraints that individual-level surveys cannot fully capture. Findings have implications for housing planning and anticipatory service provision for older adults.
+**Conclusions:** Moving intentions are the strongest predictor of relocation, but housing dissatisfaction independently predicts relocation across the intention spectrum and is the primary driver of unexpected moves among those who did not intend to relocate. Latent profile analysis identified five person-centered profiles; the environmentally pressured profile (n = 134, 47% relocated) was characterized by markedly low home satisfaction, low neighborhood cohesion, and elevated proportions of renters and single-person households, illustrating that person-environment mismatch can drive relocation even at moderate levels of stated intention. The substantial gap between intention and action among intenders, combined with the renter vulnerability effect among non-intenders, points to structural and market-level constraints that individual-level surveys cannot fully capture. Findings have implications for housing planning and anticipatory service provision for older adults.
 
 ---
 
@@ -94,6 +94,8 @@ The aim of the present study is twofold:
 
 **(b)** To assess the extent to which intentions translate into realized moves, and among those who intended to move, which factors are associated with not having relocated.
 
+**(c)** To examine which factors predict unexpected relocation among older adults who did not intend to move at baseline.
+
 ## Research questions
 
 1. To what extent do self-reported moving intentions at baseline predict actual relocation over a three-year period?
@@ -102,7 +104,7 @@ The aim of the present study is twofold:
 
 3. Among those who intended to move at baseline, which factors are associated with *not* having relocated after three years?
 
-4. *(If sample size allows)* Among those who did not intend to move at baseline, which factors predict unexpected relocation?
+4. Among those who did not intend to move at baseline, which factors predict unexpected relocation?
 
 ## Design and sample
 
@@ -764,6 +766,20 @@ The LPA results converge with and extend the variable-centered findings in sever
 
 **Structural vulnerability concentrates in Profile 4.** The high proportion of single-person households (44.8%) and renters (38.8%) in Profile 4 is not incidental. Living alone reduces the social and logistical resources available to plan and execute a move; renter status exposes individuals to factors outside their control, such as lease termination or rent increases. The combination of housing dissatisfaction, weak neighborhood ties, and structural vulnerability makes this the group most at risk of forced or reactive relocation, which has implications for housing planning and proactive support provision.
 
+## Planned future analyses
+
+Register data for all participants (linkage via `LopNr_PersonNr`) are pending. When available, the following analyses are planned:
+
+| Analysis | Purpose | Register source |
+|---|---|---|
+| Outcome validation | Cross-tabulate self-reported vs register-derived relocation (address change); re-run RQ1–RQ4 with register outcome | Location register |
+| Attrition analysis | Classify T3 non-respondents (n = 545) as deceased, dropout, or censored; refit survival models with corrected censoring | Mortality register |
+| Health trajectory | Add objective comorbidity index (Charlson/Elixhauser) to models; test whether the null health effect reflects measurement limitations in self-rated health | NPR + prescription register |
+| SES analysis | Add disposable income to all models; assess whether low income predicts involuntary relocation among non-intenders | SCB income register |
+| Objective housing accessibility | Replace or supplement housing suitability (currently shows collinearity with satisfaction) with building-level measures (elevator, storey, building year) | Building/apartment register |
+
+Note: 3 participants are missing `LopNr_PersonNr` and cannot be linked to register data.
+
 ## Project status
 
 | Milestone | Status |
@@ -780,7 +796,8 @@ The LPA results converge with and extend the variable-centered findings in sever
 | Latent profile analysis | ✅ Complete |
 | Table 1 | ✅ Complete |
 | Forest plots (RQ1–RQ4) | ✅ Complete |
-| Manuscript drafting | 🔄 In progress ||
+| Manuscript drafting | 🔄 In progress |
+| Register data linkage | ⏳ Pending |
 | Submission | ⏳ Pending |
 
 ## Repository and reproducibility
