@@ -14,7 +14,7 @@ raw <- read_tsv(
 # 99   = not applicable / skip
 # 888  = not applicable (sub-items)
 # 9999 = not asked / filter question
-NA_CODES <- c(99, 888, 9999)
+NA_CODES <- c(99, 888, 999, 9999)
 
 df <- raw |>
   mutate(across(where(is.numeric), \(x) ifelse(x %in% NA_CODES, NA, x))) |>
