@@ -1,0 +1,4 @@
+model,AIC,nagelkerke_r2,delta_aic
+M0 (null),1945,NA,0
+M1 (intentions),1580.4,0.276,-364.6
+M2 (+ age + sex + srh),1568.1,0.288,-376.9

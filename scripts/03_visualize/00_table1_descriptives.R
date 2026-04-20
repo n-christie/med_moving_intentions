@@ -39,9 +39,10 @@ tab_dat <- df |>
     ),
 
     any_obstacle_f = factor(
-      case_when(any_obstacle == 1 ~ "Yes", any_obstacle == 0 ~ "No", TRUE ~ NA_character_),
+      case_when(as.integer(any_obstacle) == 1 ~ "Yes", as.integer(any_obstacle) == 0 ~ "No", TRUE ~ NA_character_),
       levels = c("Yes", "No")
-    )
+    ),
+    neighbourhood_cohesion = haven::zap_labels(neighbourhood_cohesion)
   )
 
 # ── Compute p-values (t-test / chi-squared) ───────────────────────────────────
@@ -98,7 +99,7 @@ tbl1 <- tab_dat |>
       all_categorical() ~ "{n} ({p}%)"
     ),
     digits = list(
-      all_continuous()  ~ 1,
+      all_continuous()  ~ 2,
       all_categorical() ~ c(0, 1)
     ),
     missing = "no"

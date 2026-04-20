@@ -26,8 +26,36 @@ library(broom)
 library(gtsummary)
 library(gt)
 
-df  <- readRDS("../data/processed/survey_analysis.rds")
-dat <- df |> filter(!is.na(relocated_f))
+# Primary dataset: long panel (3 rows per person); filter to T1 for baseline
+panel <- readRDS("../data/processed/panel_merged.rds")
+
+# ── Recode register variables ─────────────────────────────────────────────────
+panel <- panel |> mutate(
+  civil_f = case_when(
+    civil == "G"  ~ "Married",
+    civil == "S"  ~ "Cohabiting",
+    civil == "OG" ~ "Single",
+    civil == "Ä"  ~ "Widowed",
+    !is.na(civil) ~ "Other",
+    TRUE ~ NA_character_
+  ) |> factor(levels = c("Married", "Cohabiting", "Single", "Widowed", "Other")),
+
+  syss_f = case_when(
+    syss_stat19 == 1 ~ "Employed",
+    syss_stat19 == 6 ~ "Retired",
+    !is.na(syss_stat19) ~ "Other",
+    TRUE ~ NA_character_
+  ) |> factor(levels = c("Employed", "Retired", "Other")),
+
+  region = case_when(
+    substr(lan, 1, 2) %in% c("01", "12", "14") ~ "Metro",
+    !is.na(lan) ~ "Non-metro",
+    TRUE ~ NA_character_
+  ) |> factor()
+)
+
+df    <- panel |> filter(wave == "T1")
+dat   <- df |> filter(!is.na(relocated_f))
 
 # ── RQ1/RQ2 models — full sample ──────────────────────────────────────────────
 dat_rq2 <- dat |>
@@ -46,8 +74,10 @@ m6 <- glm(relocated_f ~ intention_timeframe + age + sex + srh +
           data = dat_rq2, family = binomial)
 
 # ── RQ3 models — intenders only ───────────────────────────────────────────────
+# VAR024 is the panel-normalised name for VAR24_T1 (2-digit → 3-digit padding)
 dat_rq3 <- dat |>
   filter(
+    VAR024 %in% c(1, 2),
     !is.na(intention_level), !is.na(age), !is.na(sex), !is.na(srh),
     complete.cases(pick(
       housing_suitability, home_satisfaction, neighbourhood_cohesion,
@@ -67,13 +97,14 @@ m4_rq3 <- glm(
 )
 
 # ── RQ4 models — non-intenders only ───────────────────────────────────────────
+# VAR024 = VAR24_T1; VAR001_2 = VAR01_2_T1 (panel-normalised names)
 dat_rq4 <- dat |>
-  filter(as.numeric(VAR24_T1) == 3) |>
+  filter(as.numeric(VAR024) == 3) |>
   mutate(
     owner = factor(
       case_when(
-        as.numeric(VAR01_2_T1) == 1 ~ "Owner",
-        as.numeric(VAR01_2_T1) == 2 ~ "Renter",
+        as.numeric(VAR001_2) == 1 ~ "Owner",
+        as.numeric(VAR001_2) == 2 ~ "Renter",
         TRUE ~ NA_character_
       ),
       levels = c("Owner", "Renter")
@@ -96,10 +127,16 @@ m3_rq4 <- glm(relocated_f ~ age + sex + srh +
 # ── Survival setup ─────────────────────────────────────────────────────────────
 # reloc_date1 is sourced from the Swedish tax register (folkbokföring) and
 # reflects the precise registered address-change date — not self-reported.
+# T3 survey dates joined from T3 rows; Date = survey date within each wave.
 study_end <- as.Date("2024-11-13")
 
+t3_dates <- panel |>
+  filter(wave == "T3") |>
+  select(LopNr_PersonNr, Date_T3 = Date)
+
 surv_dat <- dat |>
-  filter(!is.na(Date_T1), !is.na(intention_timeframe),
+  left_join(t3_dates, by = "LopNr_PersonNr") |>
+  filter(!is.na(Date), !is.na(intention_timeframe),
          !is.na(age), !is.na(sex), !is.na(srh)) |>
   mutate(
     end_date    = case_when(
@@ -107,7 +144,7 @@ surv_dat <- dat |>
       !is.na(Date_T3) ~ Date_T3,
       TRUE            ~ study_end
     ),
-    time_months = as.numeric(end_date - Date_T1) / 30.44,
+    time_months = as.numeric(end_date - Date) / 30.44,
     event       = as.integer(relocated == 1)
   ) |>
   filter(time_months > 0)
@@ -137,7 +174,7 @@ cox_strat <- survival::coxph(
 ::: {.callout-note appearance="minimal"}
 **About this document**
 
-This page presents two linked papers from a prospective longitudinal study of residential relocation among older adults registered on housing company interest lists in Sweden (N = 1,961; T1: 2021, T2: 2022, T3: 2024). Exact relocation dates are sourced from the Swedish tax register (folkbokföring). Register linkage for additional predictors (income, housing characteristics) is planned; see [Planned future analyses](#planned-future-analyses).
+This page presents two linked papers from a prospective longitudinal study of residential relocation among older adults registered on housing company interest lists in Sweden (N = 1,958; T1: 2021, T2: 2022, T3: 2024). Exact relocation dates are sourced from the Swedish tax register. Register data (income, marital status, employment, regional indicators) have been linked and are used in supplementary analyses; see [Register-based analyses](#register-analyses).
 
 **Paper 1** examines how strongly moving intentions predict realized relocation and why many intenders do not follow through.  
 **Paper 2** examines who relocates without intending to, and identifies the housing and structural factors that drive reactive, unplanned moves.
@@ -153,17 +190,40 @@ Jump to: [Paper 1](#paper-1) · [Paper 2](#paper-2) · [Appendix: Full LPA](#app
 
 **Design:** Prospective longitudinal survey study; three time points.
 
-| Wave | Label | Year |
-|------|-------|------|
-| T1 | Baseline | 2021 |
-| T2 | First follow-up | 2022 |
-| T3 | Second follow-up | 2024 |
+| Wave | Label | Year | n responded | Response rate |
+|------|-------|------|-------------|---------------|
+| T1 | Baseline | 2021 | 1,958 | 100% |
+| T2 | First follow-up | 2022 | 1,501 | 76.7% |
+| T3 | Second follow-up | 2024 | 1,296 | 66.2% |
+
+Twenty-four participants died during the study period (10 between T1 and T2, 14 between T2 and T3). An additional 31 participants de-registered from the Swedish population register during the study period (15 between T1 and T2, 16 between T2 and T3), indicating emigration or administrative de-registration.
+
+```{mermaid}
+%%| fig-cap: "Figure 1. Sample attrition across three waves."
+flowchart TD
+    E["**Enrolled at T1 (2021)**<br/>n = 1,958"] --> T1
+    T1["**T1 Baseline**<br/>N = 1,958 · 100%"] --> T2["**T2 First follow-up (2022)**<br/>N = 1,501 · 76.7%"]
+    T1 --> D1["Lost to follow-up: n = 457<br/>Deaths: n = 10<br/>De-registered: n = 15"]
+    T2 --> T3["**T3 Second follow-up (2024)**<br/>N = 1,296 · 66.2%"]
+    T2 --> D2["Lost to follow-up: n = 205<br/>Deaths: n = 14<br/>De-registered: n = 16"]
+    T3 --> OUT1["Relocated: n = 404 (20.6%)"]
+    T3 --> OUT2["Not relocated: n = 892"]
+
+    style D1 fill:#fee2e2,stroke:#ef4444
+    style D2 fill:#fee2e2,stroke:#ef4444
+    style T1 fill:#dbeafe,stroke:#3b82f6
+    style T2 fill:#dbeafe,stroke:#3b82f6
+    style T3 fill:#dbeafe,stroke:#3b82f6
+    style E fill:#d1fae5,stroke:#10b981
+    style OUT1 fill:#d1fae5,stroke:#10b981
+    style OUT2 fill:#f3f4f6,stroke:#6b7280
+```
 
 **Population:** Adults aged 55 years or older registered on housing company interest or waiting lists in Sweden.
 
-**Baseline sample (T1):** N = 1,964. The sample was predominantly female (55%), with a mean age of 69 years (SD 7.7, range 54–90). The vast majority (92%) were born in Sweden. Most participants lived with a spouse or partner (68%). Most were highly educated (67% university), retired (65%), and financially stable (95%). The majority rated their health as good, very good, or excellent (83%), though 25% reported a long-term health condition. Most participants (81%) owned their home; just over half (53%) lived in multifamily dwellings.
+**Baseline sample (T1):** N = 1,958. The sample was predominantly female (55%), with a mean age of 69 years (SD 7.7, range 54–90). The vast majority (92%) were born in Sweden. Most participants lived with a spouse or partner (68%). Most were highly educated (67% university), retired (65%), and financially stable (95%). The majority rated their health as good, very good, or excellent (83%), though 25% reported a long-term health condition. Most participants (81%) owned their home; just over half (53%) lived in multifamily dwellings.
 
-**Outcome:** Actual relocation between T1 and T3, recorded as binary (`relocated`: 0 = No, 1 = Yes). For survival analyses, exact move dates are taken from the Swedish tax register (folkbokföring), which records registered address changes precisely and are therefore not subject to recall bias. At baseline, approximately 31% of participants (n = 612) expected to move within two years.
+**Outcome:** Actual relocation between T1 and T3, recorded as binary (`relocated`: 0 = No, 1 = Yes). For survival analyses, exact move dates are taken from the Swedish tax register, which records registered address changes precisely and are therefore not subject to recall bias. At baseline, approximately 31% of participants (n = 612) expected to move within two years.
 
 ## Descriptive statistics {#descriptive-statistics}
 
@@ -176,14 +236,15 @@ tab_dat <- dat |>
     srh_f = factor(srh, levels = 1:5,
                    labels = c("1 Poor", "2 Reasonably good",
                               "3 Good", "4 Very good", "5 Excellent")),
-    obs_financial_f      = factor(obs_financial,      levels = 0:1, labels = c("No", "Yes")),
-    obs_supply_f         = factor(obs_supply,         levels = 0:1, labels = c("No", "Yes")),
-    obs_energy_f         = factor(obs_energy,         levels = 0:1, labels = c("No", "Yes")),
-    obs_own_health_f     = factor(obs_own_health,     levels = 0:1, labels = c("No", "Yes")),
-    obs_partner_health_f = factor(obs_partner_health, levels = 0:1, labels = c("No", "Yes")),
-    obs_dependents_f     = factor(obs_dependents,     levels = 0:1, labels = c("No", "Yes")),
-    obs_bulky_f          = factor(obs_bulky,          levels = 0:1, labels = c("No", "Yes")),
-    any_obstacle_f       = factor(any_obstacle,       levels = 0:1, labels = c("No", "Yes"))
+    neighbourhood_cohesion = haven::zap_labels(neighbourhood_cohesion),
+    obs_financial_f      = factor(as.integer(obs_financial),      levels = 0:1, labels = c("No", "Yes")),
+    obs_supply_f         = factor(as.integer(obs_supply),         levels = 0:1, labels = c("No", "Yes")),
+    obs_energy_f         = factor(as.integer(obs_energy),         levels = 0:1, labels = c("No", "Yes")),
+    obs_own_health_f     = factor(as.integer(obs_own_health),     levels = 0:1, labels = c("No", "Yes")),
+    obs_partner_health_f = factor(as.integer(obs_partner_health), levels = 0:1, labels = c("No", "Yes")),
+    obs_dependents_f     = factor(as.integer(obs_dependents),     levels = 0:1, labels = c("No", "Yes")),
+    obs_bulky_f          = factor(as.integer(obs_bulky),          levels = 0:1, labels = c("No", "Yes")),
+    any_obstacle_f       = factor(as.integer(any_obstacle),       levels = 0:1, labels = c("No", "Yes"))
   )
 
 tbl_summary(
@@ -214,15 +275,40 @@ tbl_summary(
     obs_dependents_f       ~ "  Obstacle: Dependents",
     obs_bulky_f            ~ "  Obstacle: Bulky goods"
   ),
+  type = list(
+    neighbourhood_cohesion ~ "continuous",
+    home_satisfaction      ~ "continuous",
+    housing_suitability    ~ "continuous",
+    srh_f                  ~ "categorical",
+    any_obstacle_f         ~ "dichotomous",
+    obs_financial_f        ~ "dichotomous",
+    obs_supply_f           ~ "dichotomous",
+    obs_energy_f           ~ "dichotomous",
+    obs_own_health_f       ~ "dichotomous",
+    obs_partner_health_f   ~ "dichotomous",
+    obs_dependents_f       ~ "dichotomous",
+    obs_bulky_f            ~ "dichotomous"
+  ),
+  value = list(
+    any_obstacle_f         ~ "Yes",
+    obs_financial_f        ~ "Yes",
+    obs_supply_f           ~ "Yes",
+    obs_energy_f           ~ "Yes",
+    obs_own_health_f       ~ "Yes",
+    obs_partner_health_f   ~ "Yes",
+    obs_dependents_f       ~ "Yes",
+    obs_bulky_f            ~ "Yes"
+  ),
   statistic = list(
     all_continuous()  ~ "{mean} ({sd})",
     all_categorical() ~ "{n} ({p}%)"
   ),
   digits = list(
-    all_continuous()  ~ 1,
+    all_continuous()  ~ 2,
     all_categorical() ~ c(0, 1)
   ),
-  missing = "no"
+  missing = "ifany",
+  missing_text = "Missing"
 ) |>
   add_overall(last = FALSE) |>
   add_p(
@@ -242,7 +328,7 @@ tbl_summary(
     p.value  ~ "**p**"
   ) |>
   modify_footnote(
-    stat_0  ~ "Mean (SD) or n (%)",
+    stat_0  ~ "Mean (SD) for continuous variables; n (%) for categorical variables; n (% reporting Yes) for obstacle items",
     p.value ~ "t-test for continuous; chi-squared for categorical"
   )
 ```
@@ -261,9 +347,9 @@ tbl_summary(
 
 **Objective:** To examine whether self-reported moving intentions and housing-related factors at baseline predict actual relocation over a three-year period, and to identify factors associated with non-relocation among those who intended to move.
 
-**Methods:** Prospective longitudinal survey study with three time points (T1: 2021, T2: 2022, T3: 2024) among adults aged 55 or older registered on housing company interest lists in Sweden (N = 1,961). Binary logistic regression was used to model the probability of relocation, with models built sequentially from intentions and demographics through housing factors and perceived obstacles. Cox proportional hazards models used exact move dates from the Swedish tax register to account for varying follow-up length; a stratified model addressed a proportional hazards violation for intention timeframe. A supplementary latent profile analysis is reported in the appendix.
+**Methods:** Prospective longitudinal survey study with three time points (T1: 2021, T2: 2022, T3: 2024) among adults aged 55 or older registered on housing company interest lists in Sweden (N = 1,958). Binary logistic regression was used to model the probability of relocation, with models built sequentially from intentions and demographics through housing factors and perceived obstacles. Cox proportional hazards models used exact move dates from the Swedish tax register to account for varying follow-up length; a stratified model addressed a proportional hazards violation for intention timeframe. A supplementary latent profile analysis is reported in the appendix.
 
-**Results:** Over the three-year period, 20.6% of participants (n = 404) relocated. Baseline moving intentions were the dominant predictor: compared to those expecting to move in two or more years, those expecting to move within one year had over 20-fold higher odds of relocation (OR = 22.1, 95% CI: 15.7–31.3), and 71.4% of this group actually relocated. Home satisfaction was the only housing-related factor independently associated with relocation in the full sample (OR ≈ 0.76–0.86), though housing factors as a block added minimally beyond intentions (ΔNagelkerke R² = 0.008). Among the 609 intenders, 56% had not relocated by T3; within this group, stronger intention urgency (OR = 5.8), younger age (OR = 0.96 per year), and having dependents (OR = 0.18) were associated with relocation, while housing factors and most specific obstacles were not.
+**Results:** Over the three-year period, 20.6% of participants (n = 404) relocated. Baseline moving intentions were the dominant predictor: compared to those expecting to move in two or more years, those expecting to move within one year had over 20-fold higher odds of relocation (OR = 22.3, 95% CI: 15.9–31.7), and 71.4% of this group actually relocated. Home satisfaction was the only housing-related factor independently associated with relocation in the full sample (OR ≈ 0.76–0.86), though housing factors as a block added minimally beyond intentions (ΔNagelkerke R² = 0.008). Among the 609 intenders, 56% had not relocated by T3; within this group, stronger intention urgency (OR = 5.8), younger age (OR = 0.96 per year), and having dependents (OR = 0.18) were associated with relocation, while housing factors and most specific obstacles were not.
 
 **Conclusions:** Moving intentions are the strongest predictor of relocation, but 56% of intenders did not move within three years. Among blocked intenders, the gap was explained by intention urgency, age, and life-course factors rather than housing conditions, suggesting structural and market-level constraints as the primary barrier. Predictors of unexpected relocation among non-intenders are examined in a companion paper.
 
@@ -331,7 +417,7 @@ tbl_merge(
 )
 ```
 
-![Forest plot: unadjusted vs adjusted ORs for moving intentions predicting relocation (RQ1)](figures/RQ1_forest_plot.png){fig-alt="Forest plot showing odds ratios for intention timeframe categories predicting relocation." width="75%"}
+![Forest plot: unadjusted vs adjusted ORs for moving intentions predicting relocation (RQ1)](../paper/paper1/figures/RQ1_forest.png){fig-alt="Forest plot showing odds ratios for intention timeframe categories predicting relocation." width="75%"}
 
 ### RQ2: Housing factors add minimally beyond intentions {#rq2}
 
@@ -371,7 +457,7 @@ tbl_merge(
 )
 ```
 
-![Forest plot: baseline vs full housing model predicting relocation (RQ2)](figures/RQ2_forest_plot.png){fig-alt="Forest plot comparing baseline and full housing models." width="75%"}
+![Forest plot: baseline vs full housing model predicting relocation (RQ2)](../paper/paper1/figures/RQ2_forest.png){fig-alt="Forest plot comparing baseline and full housing models." width="75%"}
 
 ### RQ3: Among intenders, who did not relocate? {#rq3}
 
@@ -428,17 +514,17 @@ tbl_merge(
 )
 ```
 
-![Forest plot: models among intenders (RQ3)](figures/RQ3_forest_plot.png){fig-alt="Forest plot comparing baseline and full models among intenders." width="75%"}
+![Forest plot: models among intenders (RQ3)](../paper/paper1/figures/RQ3_forest.png){fig-alt="Forest plot comparing baseline and full models among intenders." width="75%"}
 
 *Predictors of unexpected relocation among non-intenders are examined in [Paper 2, RQ4](#rq4).*
 
 ## Limitations {#p1-limitations}
 
-Three limitations warrant attention. First, 545 participants did not respond at T3 and are administratively censored in survival analyses; non-response may not be random with respect to relocation or health status. Second, the sample is drawn from housing-company interest lists rather than the general older adult population; findings may not generalize to those who have not signaled relocation interest. Third, no time-varying measures of housing market conditions or individual financial capacity were available in the survey data; the Swedish rate-hike context (discussed in [Paper 2](#macro-context)) is therefore contextual rather than directly modelled. Register linkage to obtain objective income and housing characteristics is planned; see [Planned future analyses](#planned-future-analyses).
+Three limitations warrant attention. First, 545 participants did not respond at T3 and are administratively censored in survival analyses; non-response may not be random with respect to relocation or health status. Second, the sample is drawn from housing-company interest lists rather than the general older adult population; findings may not generalize to those who have not signaled relocation interest. Third, no time-varying measures of housing market conditions or individual financial capacity were available in the survey data; the Swedish rate-hike context (discussed in [Paper 2](#macro-context)) is therefore contextual rather than directly modelled. Register-linked income and employment variables are incorporated in supplementary models; see [Register-based analyses](#register-analyses).
 
 ## Further analysis: Survival analysis {#further-analysis-survival-analysis}
 
-To complement the logistic regression results, Cox proportional hazards models were fitted using exact relocation dates. These dates are taken from the Swedish tax register (folkbokföring), which records registered address changes precisely and therefore reflect actual move timing rather than survey recall. This approach additionally accounts for the varying length of follow-up across participants, as T1 surveys were completed between March and December 2021.
+To complement the logistic regression results, Cox proportional hazards models were fitted using exact relocation dates. These dates are taken from the Swedish tax register, which records registered address changes precisely and therefore reflect actual move timing rather than survey recall. This approach additionally accounts for the varying length of follow-up across participants, as T1 surveys were completed between March and December 2021.
 
 **Censoring rules:** Participants who relocated were assigned their exact tax-register move date. Non-relocators who responded at T3 were censored at their T3 survey date. Non-relocators who did not respond at T3 (n = 545) were administratively censored at 2024-11-13.
 
@@ -528,7 +614,7 @@ Results are consistent with logistic regression: lower home satisfaction is asso
 
 **Objective:** To identify factors associated with non-relocation among older adults who intended to move, and to examine what predicts unexpected relocation among those who did not intend to move.
 
-**Methods:** Subgroup logistic regression analyses within a prospective longitudinal cohort (N = 1,961; Sweden 2021–2024). The blocked-intender subsample (n = 609) and the unexpected-mover subsample (n = 1,286 non-intenders, of whom 134 relocated) were analysed separately. A person-centered latent profile analysis (full results in appendix) identified the environmentally pressured profile as a theoretically salient subgroup.
+**Methods:** Subgroup logistic regression analyses within a prospective longitudinal cohort (N = 1,958; Sweden 2021–2024). The blocked-intender subsample (n = 609) and the unexpected-mover subsample (n = 1,286 non-intenders, of whom 134 relocated) were analysed separately. A person-centered latent profile analysis (full results in appendix) identified the environmentally pressured profile as a theoretically salient subgroup.
 
 **Results:** Among intenders, 56% did not relocate. Intention urgency (OR = 5.8), younger age (OR = 0.96), and having dependents (OR = 0.18) predicted follow-through; housing factors and perceived obstacles were not independently predictive, suggesting structural market barriers rather than personal conditions explain the gap. Among non-intenders, housing dissatisfaction was the dominant predictor of unexpected relocation (OR = 0.50, 95% CI: 0.38–0.65) — substantially stronger than in the full sample (OR ≈ 0.76–0.86) — and renter status was associated with nearly double the odds of unexpected relocation compared to owners (OR = 1.91, 95% CI: 1.18–3.01), consistent with involuntary displacement. The environmentally pressured latent profile (n = 134; 47% relocated, OR = 6.95 vs. settled reference) captured individuals with severe person-environment mismatch who relocated despite only moderate stated intention.
 
@@ -645,7 +731,7 @@ tbl_merge(
 )
 ```
 
-![Forest plot: demographics vs full model for unexpected relocation among non-intenders (RQ4)](figures/RQ4_forest_plot.png){fig-alt="Forest plot showing odds ratios for predictors of unexpected relocation among non-intenders." width="75%"}
+![Forest plot: demographics vs full model for unexpected relocation among non-intenders (RQ4)](../paper/paper2/figures/RQ4_forest.png){fig-alt="Forest plot showing odds ratios for predictors of unexpected relocation among non-intenders." width="75%"}
 
 ### Person-centered confirmation: latent profile analysis {#p2-lpa}
 
@@ -796,7 +882,7 @@ tibble::tribble(
 
 **Profile 5 — Satisfied younger stayers (n = 587; 13% relocated).** Lowest intention (1.10), maximum satisfaction, highest self-rated health (4.09), youngest mean age (63.2). Low relocation comparable to Profile 2, but these are younger adults with strong housing fit who likely registered as a precautionary measure rather than in response to imminent need.
 
-![Latent profile analysis: mean indicator values by profile (original scales)](figures/LPA_profiles.png){fig-alt="Parallel coordinates plot showing mean values of six indicators across five latent profiles." width="100%"}
+![Latent profile analysis: mean indicator values by profile (original scales)](../paper/paper2/figures/LPA_profiles.png){fig-alt="Parallel coordinates plot showing mean values of six indicators across five latent profiles." width="100%"}
 
 ## A.4 Relocation odds by profile
 
@@ -837,18 +923,359 @@ tibble::tribble(
 
 ---
 
-# Planned future analyses {#planned-future-analyses}
+# Register-based analyses {#register-analyses}
 
-Register data for all participants (linkage via `LopNr_PersonNr`) are pending. When available, the following analyses are planned:
+Register data (LISA) are linked to the panel via `LopNr_PersonNr` and available in `panel_merged.rds`. All analyses below use T1 baseline data unless otherwise noted. Register variables are available with 99.6% coverage (21 participants have no register match).
 
-| Analysis | Purpose | Register source |
-|----------|---------|----------------|
-| Outcome validation | Cross-tabulate self-reported vs register-derived relocation (year-end address change); assess agreement and reclassify T3 non-responders | Population register |
-| SES analysis | Add disposable income to all models; assess whether low income predicts involuntary relocation among non-intenders | SCB income register |
-| Objective housing accessibility | Replace or supplement self-reported housing suitability (collinear with satisfaction) with building-level measures (elevator, storey, building year) | Building/apartment register |
-| Attrition analysis | Classify T3 non-respondents (n = 545) as relocated or non-relocated; assess direction and magnitude of non-response bias | Population register |
+The LISA register linkage extends the study's analytic reach in two important ways. First, it allows us to assess the internal validity of the study — by checking whether survey attrition was random or selective, and by cross-validating survey-reported outcomes against administrative address records. Second, it enables the inclusion of socioeconomic and demographic variables that were not collected in the survey itself (income, marital status, employment status, regional location), allowing us to test whether the intention–behaviour gap and its predictors are robust to socioeconomic confounding.
 
-Note: 3 participants are missing `LopNr_PersonNr` and cannot be linked to register data.
+## A8 — Attrition bias {#attrition-bias}
+
+A 33.8% loss to follow-up between T1 and T3 (n = 662 non-responders) raises the concern of **selective attrition**: if participants who dropped out differ systematically from those who completed T3, the associations estimated from the complete-case sample may not generalise to the broader population of interest. Selective attrition is especially consequential when the factors driving dropout are also related to the outcome (relocation). For example, if participants with lower income or poorer health were disproportionately lost to follow-up, and if these groups have lower relocation rates, the study might overestimate the overall prevalence of relocation or underestimate the role of structural barriers.
+
+The table below compares T1 characteristics of T3 responders and non-responders across survey and register variables. Register variables (income, marital status, employment) are particularly valuable here because they were not available in earlier attrition checks based on survey data alone.
+
+```{r}
+#| label: attrition-bias
+
+t3_responders <- panel |>
+  filter(wave == "T3", !is.na(Date)) |>
+  pull(LopNr_PersonNr)
+
+df_attr <- df |>
+  mutate(t3_responded = LopNr_PersonNr %in% t3_responders)
+
+tbl_summary(
+  df_attr,
+  by = t3_responded,
+  include = c(age, sex, srh, intention_timeframe, housing_suitability,
+              disp_ink_ke, civil_f, syss_f),
+  label = list(
+    age                ~ "Age (years)",
+    sex                ~ "Sex",
+    srh                ~ "Self-rated health (1–5)",
+    intention_timeframe ~ "Expected timeframe to move",
+    housing_suitability ~ "Housing suitability (1–5)",
+    disp_ink_ke        ~ "Disposable household income (SEK/month)",
+    civil_f            ~ "Marital status (register)",
+    syss_f             ~ "Employment status (register)"
+  ),
+  statistic = list(
+    all_continuous()  ~ "{mean} ({sd})",
+    all_categorical() ~ "{n} ({p}%)"
+  ),
+  digits = list(all_continuous() ~ 2, all_categorical() ~ c(0, 1)),
+  missing = "ifany"
+) |>
+  add_p(
+    test = list(all_continuous() ~ "t.test", all_categorical() ~ "chisq.test"),
+    pvalue_fun = \(x) style_pvalue(x, digits = 3)
+  ) |>
+  bold_labels() |>
+  bold_p(t = 0.05) |>
+  modify_header(
+    label  ~ "**Variable**",
+    stat_1 ~ "**Non-responder**\nn = {n}",
+    stat_2 ~ "**T3 Responder**\nn = {n}",
+    p.value ~ "**p**"
+  )
+```
+
+**Interpreting the attrition table.** Differences on baseline characteristics between responders and non-responders indicate that attrition is not entirely at random. Age and health differences are common in longitudinal studies of older adults, and a somewhat older or less healthy non-responder group would be expected and broadly in line with random informative dropout. More consequential for the study's validity would be systematic differences on intention timeframe (if intenders selectively dropped out, the intention–behaviour gap estimate would be biased) or on income and marital status (if structurally vulnerable participants were lost, estimates of SES effects would be attenuated). Where statistically significant differences are observed, sensitivity analyses or inverse-probability weighting in subsequent work should be considered. Where differences are non-significant and effect sizes are small, the complete-case sample can be treated as broadly representative of the T1 cohort.
+
+## A7 — Outcome validation {#outcome-validation}
+
+The study's relocation outcome is based on self-report at T3: participants were asked whether they had moved to a new home since T1. This means that the 662 participants who did not complete T3 are treated as **censored** — their relocation status is unknown and they are coded as 0 (not relocated) in survival analyses or excluded entirely in cross-sectional models. However, some of these non-responders may have in fact relocated; they may have failed to return the T3 questionnaire precisely because they had recently moved and were no longer receiving mail at their previous address, or because the disruption of moving led them to deprioritise the survey. If this is the case, the study's overall relocation rate (20.6%) would be systematically **underestimated**, and the association between intention and behaviour would be **conservative**.
+
+The register provides a way to partially resolve this ambiguity. By comparing each T3 non-responder's municipality and county of residence at T1 against their registered address at T3, we can identify probable moves that were never captured by the survey. Deaths and de-registrations (emigrations) explain another portion of non-response that is completely non-informative about the intention–behaviour relationship.
+
+For T3 non-responders, we classify the likely reason for non-response using register data: death, de-registration (emigration), address change (probable relocation), or no change detected.
+
+```{r}
+#| label: outcome-validation
+
+t1_geo <- panel |>
+  filter(wave == "T1") |>
+  select(LopNr_PersonNr, lan_t1 = lan, kommun_t1 = kommun)
+
+non_resp_t3 <- panel |>
+  filter(wave == "T3", is.na(Date)) |>
+  select(LopNr_PersonNr, death_date, Date_avreg, lan, kommun) |>
+  left_join(t1_geo, by = "LopNr_PersonNr") |>
+  mutate(
+    status = case_when(
+      !is.na(death_date)                          ~ "Deceased during study",
+      !is.na(Date_avreg)                          ~ "De-registered (emigrated)",
+      !is.na(lan) & lan != lan_t1                 ~ "County change (probable move)",
+      !is.na(kommun) & kommun != kommun_t1        ~ "Municipality change (probable move)",
+      !is.na(lan)                                 ~ "No address change (likely no move)",
+      TRUE                                        ~ "No register match"
+    )
+  )
+
+non_resp_t3 |>
+  count(status) |>
+  mutate(pct = round(n / sum(n) * 100, 1)) |>
+  arrange(desc(n)) |>
+  gt::gt() |>
+  gt::cols_label(status = "Status", n = "n", pct = "%") |>
+  gt::tab_caption("T3 non-responders: classification by register data")
+```
+
+**Interpreting the outcome validation table.** The classification serves two purposes. First, it provides a realistic picture of why participants were lost to follow-up: death and emigration are non-informative with respect to the intention–behaviour gap, whereas address changes suggest the outcome of interest occurred in the absence of survey confirmation. Second, the share of non-responders with probable address changes (county or municipality change) can be used to calculate an **adjusted upper-bound estimate** of the true relocation rate: if all address-change non-responders are reclassified as having relocated, what would the overall relocation rate be? Even a modest addition from this group would confirm that the survey-based 20.6% figure is conservative. The "no address change" group is interpretively clean — these individuals very likely did not relocate. The "no register match" group (participants without LISA data) remains genuinely ambiguous and should be treated as missing.
+
+## A1–3 — Extended RQ models with register covariates {#extended-rq-models}
+
+The core models in Papers 1 and 2 rely entirely on survey-measured predictors. A persistent concern in this literature is that socioeconomic factors — particularly income and wealth — both shape the desire to move and determine the ability to act on that desire. A low-income older adult may intend to move to a more suitable home but be unable to afford a move in the prevailing housing market. Conversely, a high-income retiree may have both the preference and the means to act quickly on a stated intention. If income is positively correlated with both intentions and realisation, survey-only models may confound these two mechanisms.
+
+Three register variables address this concern directly:
+
+- **Disposable household income (`disp_ink_ke`, SEK/month):** A standardised, equivalence-weighted measure of household income from LISA, capturing both labour income and transfers. This is a more objective and precise measure than the survey's self-report of financial satisfaction. It captures the financial capacity to act on intentions.
+- **Marital status (`civil_f`):** Goes beyond the binary survey `lives_alone` item to capture five legal categories. Widowhood is theoretically important as a trigger for reactive relocation — losing a partner often leaves an older adult in a home that is too large, too expensive, or too socially isolated. Cohabiting and married individuals have shared decision-making and potentially dual resources.
+- **Employment/retirement status (`syss_f`):** Retirement is a major life-course transition that removes geographic constraints tied to employment. Retired individuals may have both the time and the freedom to relocate. In Swedish pension policy, retirement income is relatively stable, making employment status partly a proxy for life stage rather than purely economic position.
+
+The extended model (m_reg) adds all three register predictors to the m2 demographic baseline (intention timeframe + age + sex + self-rated health). The AIC comparison assesses whether register variables improve model fit beyond what is achievable with survey data alone — if AIC is substantially lower, this suggests register-based SES confounding is real and that Papers 1–2 models should be interpreted with appropriate caution about residual confounding.
+
+Income, marital status, and employment status are added as covariates to the primary logistic models.
+
+```{r}
+#| label: reg-extended-models
+
+dat_reg <- dat |>
+  filter(!is.na(disp_ink_ke), !is.na(civil_f), !is.na(syss_f),
+         !is.na(intention_timeframe), !is.na(age), !is.na(sex), !is.na(srh))
+
+m_reg <- glm(
+  relocated_f ~ intention_timeframe + age + sex + srh +
+    disp_ink_ke + civil_f + syss_f,
+  data = dat_reg, family = binomial
+)
+
+tbl_regression(
+  m_reg, exponentiate = TRUE,
+  label = list(
+    intention_timeframe ~ "Expected timeframe to move",
+    age                 ~ "Age (years)",
+    sex                 ~ "Sex",
+    srh                 ~ "Self-rated health",
+    disp_ink_ke         ~ "Disposable income (SEK/month)",
+    civil_f             ~ "Marital status",
+    syss_f              ~ "Employment status"
+  )
+) |>
+  bold_p(t = 0.05) |>
+  modify_caption("Extended RQ1 model with register covariates (OR, 95% CI)")
+```
+
+**Interpreting the extended model.** Attention should first go to whether the intention timeframe coefficients change materially after adding register covariates (comparing ORs in m_reg versus m2). If the intention effects remain similar in magnitude, it strengthens the conclusion that intentions have independent predictive value beyond socioeconomic circumstances. If the intention ORs are attenuated, it suggests that part of the apparent intention effect reflects underlying SES differences between intenders and non-intenders. Widowhood (relative to married) and single-person household status are of particular interest: positive, statistically significant coefficients would support a reactive relocation narrative in which structural circumstances, not preferences, drive moves.
+
+AIC comparison with base model (m2, survey variables only):
+
+```{r}
+#| label: reg-aic-comparison
+
+tibble(
+  Model = c("m2 (survey)", "m_reg (survey + register)"),
+  AIC   = c(AIC(m2), AIC(m_reg)),
+  N     = c(nobs(m2), nobs(m_reg))
+) |>
+  gt::gt() |>
+  gt::fmt_number(columns = AIC, decimals = 1) |>
+  gt::tab_caption("AIC comparison: base vs. register-extended model")
+```
+
+A lower AIC in m_reg indicates that register variables improve predictive fit after penalising for the additional parameters. A difference greater than ~4–6 AIC points is conventionally considered meaningful. Note that AIC comparison is complicated here by the fact that n differs slightly between models (participants with missing register data are excluded from m_reg), so the comparison is approximate. The sample size column makes this transparent.
+
+**RQ4 extended — non-intenders with register covariates:**
+
+The RQ4 analysis asks why some non-intenders (those who stated at T1 that they did not expect to move in the foreseeable future) nonetheless relocated by T3. This "unexpected relocation" group is central to Paper 2's narrative about reactive, circumstance-driven moves. The survey-only model (m3_rq4) identified housing suitability and home satisfaction as predictors, consistent with an environmental press account. The register-extended model adds a crucial SES dimension: do non-intenders with lower income, without a partner (widowed or single), or who were recently retired relocate at higher rates, even holding housing conditions constant? If so, it suggests that structural vulnerability — not just perceived housing inadequacy — drives unexpected moves. This has direct policy implications: interventions aimed at preventing unwanted forced relocation among older adults should target structurally vulnerable individuals proactively, not wait for housing conditions to deteriorate.
+
+```{r}
+#| label: reg-rq4-extended
+
+dat_rq4_reg <- dat |>
+  filter(as.numeric(VAR024) == 3,
+         !is.na(disp_ink_ke), !is.na(civil_f), !is.na(syss_f),
+         !is.na(age), !is.na(sex), !is.na(srh),
+         complete.cases(pick(housing_suitability, home_satisfaction,
+                             neighbourhood_cohesion)))
+
+m_rq4_reg <- glm(
+  relocated_f ~ age + sex + srh + housing_suitability +
+    home_satisfaction + disp_ink_ke + civil_f + syss_f,
+  data = dat_rq4_reg, family = binomial
+)
+
+tbl_regression(
+  m_rq4_reg, exponentiate = TRUE,
+  label = list(
+    age                 ~ "Age (years)",
+    sex                 ~ "Sex",
+    srh                 ~ "Self-rated health",
+    housing_suitability ~ "Housing suitability (1–5)",
+    home_satisfaction   ~ "Home satisfaction (1–5)",
+    disp_ink_ke         ~ "Disposable income (SEK/month)",
+    civil_f             ~ "Marital status",
+    syss_f              ~ "Employment status"
+  )
+) |>
+  bold_p(t = 0.05) |>
+  modify_caption("RQ4 extended: non-intenders with register covariates (OR, 95% CI)")
+```
+
+## A4 — Regional variation {#regional-variation}
+
+The Swedish housing market is not uniform. The three metropolitan counties — Stockholm (county 01), Västra Götaland/Gothenburg (county 14), and Skåne/Malmö (county 12) — are characterised by high demand, constrained supply, long waiting lists for social housing, and elevated property prices. Non-metropolitan counties face different dynamics: less competition for housing but also fewer housing options tailored to older adults (e.g., service apartments, senior-specific developments). These structural differences have at least two countervailing implications for relocation among older adults:
+
+1. **Higher barrier in metro areas:** Even if an older adult intends to move to a more suitable home, actually finding and securing appropriate housing is harder in metropolitan markets. Long queuing times for rental apartments and high prices for owner-occupied homes may delay or prevent intended moves, widening the intention–action gap.
+2. **Greater variety in metro areas:** Metropolitan areas may also offer more diverse housing options (smaller apartments, step-free access, proximity to services), making it easier for those who do find suitable housing to act on intentions.
+
+Whether relocation rates are higher or lower in metropolitan areas — and whether the association between intention and relocation differs by region — is therefore an empirical question. The metro/non-metro classification is a simplification (the `region` variable collapses 25 counties into two categories), but it provides a first-pass test of whether housing market context moderates the study's main findings.
+
+Relocation rates by metropolitan vs. non-metropolitan region, and the effect of region in the main RQ2 model.
+
+```{r}
+#| label: regional-variation
+
+region_tab <- dat |>
+  filter(!is.na(region)) |>
+  group_by(region) |>
+  summarise(
+    n           = n(),
+    n_relocated = sum(relocated == 1, na.rm = TRUE),
+    pct_relocated = round(n_relocated / n * 100, 1),
+    .groups = "drop"
+  )
+
+region_tab |>
+  gt::gt() |>
+  gt::cols_label(
+    region       = "Region",
+    n            = "N",
+    n_relocated  = "Relocated",
+    pct_relocated = "% Relocated"
+  ) |>
+  gt::tab_caption("Relocation rates by region")
+```
+
+**Interpreting the relocation rate table.** A higher relocation rate in one region does not by itself indicate a housing-market effect — it may simply reflect different distributions of intentions, age, or housing satisfaction across regions. The model below (m6 + region) adjusts for these survey-measured factors and estimates the residual regional effect.
+
+Region as covariate in m6:
+
+```{r}
+#| label: reg-region-model
+
+dat_reg6 <- dat |>
+  filter(!is.na(region),
+         complete.cases(pick(intention_timeframe, age, sex, srh,
+                             housing_suitability, home_satisfaction,
+                             neighbourhood_cohesion)))
+
+m6_region <- glm(
+  relocated_f ~ intention_timeframe + age + sex + srh +
+    housing_suitability + home_satisfaction + neighbourhood_cohesion + region,
+  data = dat_reg6, family = binomial
+)
+
+tbl_regression(
+  m6_region, exponentiate = TRUE,
+  include = "region",
+  label = list(region ~ "Region (Metro vs. Non-metro)")
+) |>
+  bold_p(t = 0.05) |>
+  modify_caption("Region coefficient from m6 extended (OR, 95% CI)")
+```
+
+**Interpreting the region coefficient.** A statistically significant positive OR for metro (relative to non-metro) would indicate higher odds of relocation in metropolitan areas after adjusting for intentions, demographics, and housing satisfaction — consistent with greater housing market activity (more transactions, easier to find a match). A non-significant or negative OR would support the barrier hypothesis (constrained supply offsets or reverses any advantage). A non-significant result should not be interpreted as evidence that regional context is unimportant — the crude metro/non-metro classification may not have sufficient resolution to detect the relevant variation. The lack of county-level or municipality-level fixed effects is an acknowledged limitation of this analysis.
+
+## A5 — Capital income as moderator {#capital-income}
+
+Most relocation research focuses on income as a linear predictor of moving, but a theoretically important question is whether financial resources specifically **moderate the relationship between intentions and behaviour**. The Theory of Planned Behaviour predicts that behavioural intention is the proximal determinant of action, but that intention can only be realised when the individual has the perceived and actual capacity to act. Among older Swedish adults, who are overwhelmingly homeowners with long residential histories, **capital income** — income from investments, rental properties, and financial assets — is a particularly relevant indicator of financial capacity. Unlike labour income (which is largely absent among retirees), capital income reflects accumulated wealth that can be drawn upon to fund a move: covering transaction costs, bridging between selling an old home and buying a new one, or affording a deposit in a competitive rental market.
+
+The interaction model tests whether higher capital income amplifies the effect of earlier intentions on relocation. If the interaction term is positive and statistically significant, it means that intenders with greater capital income are substantially more likely to realise their intentions than intenders with lower capital income — consistent with a financial-capacity model of the intention–action gap. A null interaction would suggest that financial resources are either sufficient for most participants (ceiling effect), irrelevant to the barriers that prevent intention realisation, or that labour income (captured elsewhere) is the more important financial determinant.
+
+Test whether capital income moderates the intention–action gap.
+
+```{r}
+#| label: capital-income-moderator
+
+m_kap <- glm(
+  relocated_f ~ intention_timeframe * kap_ink + age + sex + srh,
+  data = dat |> filter(!is.na(kap_ink)),
+  family = binomial
+)
+
+tbl_regression(
+  m_kap, exponentiate = TRUE,
+  label = list(
+    intention_timeframe ~ "Expected timeframe to move",
+    kap_ink             ~ "Capital income (SEK)",
+    age                 ~ "Age (years)",
+    sex                 ~ "Sex",
+    srh                 ~ "Self-rated health"
+  )
+) |>
+  bold_p(t = 0.05) |>
+  modify_caption("Capital income as moderator (OR, 95% CI); interaction with intention timeframe")
+```
+
+**Interpreting the interaction term.** The interaction coefficient for `intention_timeframe × kap_ink` captures how the slope of capital income on relocation odds differs across intention groups. A positive interaction OR (>1) means each unit increase in capital income boosts relocation odds more strongly among short-horizon intenders (< 1 year) than among non-intenders. Significant main effects without a significant interaction would suggest capital income is a general predictor of relocation, not specifically a catalyst for intention realisation. Note that capital income has a highly right-skewed distribution — a small proportion of participants will account for most variation. Sensitivity analyses with log-transformed capital income or restriction to participants with non-zero capital income may be warranted when writing this up.
+
+## A6 — Household composition validation {#household-composition}
+
+Household composition — specifically, whether an individual lives alone or with a partner — is a theoretically important variable in this study. It appears as a predictor in RQ4 models and as an auxiliary variable in the LPA (Profile 4's high proportion of single-person households being a key feature of its structural vulnerability interpretation). The survey measures this through a direct question (`VAR011_1`, household type), while the LISA register codes household type (`hushalls_typ_rtb`) based on registered addresses of all household members.
+
+Cross-validating these two sources serves three purposes:
+
+1. **Quality assurance:** A high agreement rate confirms that the survey item is reliable and that participants were not systematically misreporting their living arrangements.
+2. **Construct validation:** The survey and register measures are not identical — couples who are not yet cohabiting, or who are registered at separate addresses for administrative reasons, may appear as "single" in the register but "not alone" in the survey. Understanding the direction and magnitude of discordance helps interpret which measure is more appropriate for each research question.
+3. **LPA robustness:** Profile 4's interpretation rests partly on its high proportion of single-person households. If this classification is unreliable (low kappa), the profile's structural vulnerability narrative would need to be qualified.
+
+Cross-validation of survey single-person household (`VAR011_1 == 1`) against register household type (`hushalls_typ_rtb`).
+
+```{r}
+#| label: household-composition
+
+# VAR011_1: survey household type (1 = single-person, per LPA script derivation)
+cross_tab <- dat |>
+  filter(!is.na(hushalls_typ_rtb)) |>
+  mutate(
+    hh_type = case_when(
+      hushalls_typ_rtb == 1.1 ~ "Single",
+      hushalls_typ_rtb == 2.1 ~ "Couple",
+      TRUE ~ "Other"
+    ),
+    lives_alone = if_else(haven::zap_labels(VAR011_1) == 1, 1L, 0L)
+  ) |>
+  filter(!is.na(lives_alone)) |>
+  count(hh_type, lives_alone) |>
+  pivot_wider(names_from = lives_alone, values_from = n, values_fill = 0)
+
+cross_tab |>
+  gt::gt() |>
+  gt::cols_label(hh_type = "Register household type") |>
+  gt::tab_spanner(label = "Survey: lives alone (0 = No, 1 = Yes)", columns = -hh_type) |>
+  gt::tab_caption("Cross-validation: register household type vs. survey single-person household")
+```
+
+```{r}
+#| label: household-kappa
+
+kappa_dat <- dat |>
+  filter(!is.na(hushalls_typ_rtb), !is.na(VAR011_1)) |>
+  mutate(
+    hh_single_reg    = as.integer(hushalls_typ_rtb == 1.1),
+    hh_single_survey = as.integer(haven::zap_labels(VAR011_1) == 1)
+  )
+
+kappa_val <- psych::cohen.kappa(
+  cbind(kappa_dat$hh_single_reg, kappa_dat$hh_single_survey)
+)$kappa
+
+cat(sprintf("Cohen's kappa (register vs. survey single-person household): %.3f\n", kappa_val))
+```
+
+**Interpreting the cross-tabulation and kappa.** The cross-tabulation shows where the two measures agree (diagonal cells) and where they diverge (off-diagonal cells). The most informative off-diagonal cell is "Single (register) × Not alone (survey)" — individuals the register classifies as single-person households but who report living with someone. These cases likely reflect administrative lag (a partner who has moved in but not yet re-registered) or survey-register definitional differences. Cohen's kappa provides a single summary of agreement corrected for chance: κ ≥ 0.80 indicates near-perfect agreement and validates the survey measure; κ = 0.60–0.79 indicates substantial agreement, acceptable for the purposes of the LPA auxiliary variable; κ < 0.60 would raise concerns and suggest that the two measures capture meaningfully different aspects of living arrangements, warranting a sensitivity analysis replacing the survey item with the register measure in key models.
 
 # Project status {#project-status}
 
@@ -865,21 +1292,33 @@ Note: 3 participants are missing `LopNr_PersonNr` and cannot be linked to regist
 | Forest plots (RQ1–RQ4) | ✅ Complete |
 | Paper 1 manuscript drafting | 🔄 In progress |
 | Paper 2 manuscript drafting | 🔄 In progress |
-| Register data linkage | ⏳ Pending |
+| Register data linkage | ✅ Complete |
+| Register-based analyses | ✅ Complete |
 | Submission (Paper 1) | ⏳ Pending |
 | Submission (Paper 2) | ⏳ Pending |
 
 # Repository and reproducibility {#repository}
 
-All analysis code is available in the project repository. Scripts are numbered and run in order:
+All analysis code is available in the project repository. Scripts are numbered and run in order from the project root:
 
-| Step | Script | Purpose |
-|------|--------|---------|
-| 1 | `00_translate_codebook.R` | Translate Swedish labels to English (run once) |
-| 2 | `01_import.R` | Import and clean raw data |
-| 3 | `02_recode.R` | All variable recodings and composites (documented) |
-| 4 | `02_analyze/01–03_RQ*.R` | Logistic regression models per RQ |
-| 5 | `03_visualize/00–03_*.R` | Table 1 and forest plots |
+**Data pipeline (`scripts/01_clean/`)**
+
+| Step | Script | Output |
+|------|--------|--------|
+| 1 | `01_import.R` | `data/processed/survey_clean.rds` |
+| 2 | `02_recode.R` | `data/processed/survey_analysis.rds` |
+| 3 | `04_pivot_panel.R` | `data/processed/survey_panel.rds` |
+| 4 | `05_merge_register.R` | `data/processed/panel_merged.rds` |
+
+**Paper analyses**
+
+| Folder | Scripts | Outputs |
+|--------|---------|---------|
+| `paper/descriptive/` | `00_cohort_tracking.R` | Attrition and Table 1 CSVs |
+| `paper/paper1/analysis/` | `01_RQ1.R`, `02_RQ2.R`, `03_RQ3.R`, `04_survival.R` | Figures, tables, models |
+| `paper/paper2/analysis/` | `01_RQ3_blocked.R`, `02_RQ4.R`, `03_LPA.R` | Figures, tables, models |
+
+All paper scripts read `data/processed/panel_merged.rds` and filter to `wave == "T1"` for cross-sectional baseline analyses. Outputs are saved to `paper/paperX/figures/` (PNG, 300 dpi), `paper/paperX/tables/` (CSV), and `paper/paperX/models/` (RDS).
 
 # Contact {#contact}
 

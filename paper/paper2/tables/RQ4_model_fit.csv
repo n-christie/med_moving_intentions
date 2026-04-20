@@ -1,0 +1,5 @@
+model,AIC,nagelkerke_r2,delta_aic
+M0 (null),830,NA,0
+M1 (demographics),832.3,0.006,2.3
+M2 (+housing),811.9,0.049,-18.1
+M3 (+tenure),807.1,0.06,-22.9

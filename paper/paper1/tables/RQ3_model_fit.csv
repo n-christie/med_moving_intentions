@@ -1,0 +1,5 @@
+model,AIC,nagelkerke_r2,delta_aic
+M1 (demo + intention),689.8,0.252,0
+M2 (+housing),693.4,0.257,3.6
+M3 (+obstacles),686.4,0.288,-3.4
+M4 (full),691,0.29,1.2

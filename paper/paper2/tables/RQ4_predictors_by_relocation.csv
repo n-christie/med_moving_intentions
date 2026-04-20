@@ -1,0 +1,6 @@
+var,mean_No,mean_Yes,sd_No,sd_Yes
+age,68.14,66.96,7.51,7.11
+srh,3.55,3.63,0.97,1.03
+housing_suitability,4.78,4.8,0.46,0.44
+home_satisfaction,4.77,4.49,0.57,0.89
+neighbourhood_cohesion,2.23,2.14,0.5,0.49

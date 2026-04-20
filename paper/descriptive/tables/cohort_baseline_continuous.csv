@@ -1,0 +1,6 @@
+variable,n,mean,sd,median,min,max
+Age,1958,68.7,7.7,69,54.4,90
+Self-rated health (1–5),1953,3.5,1,3,1,5
+Housing suitability,1933,4.7,0.5,5,1,5
+Home satisfaction,1946,4.6,0.8,5,1,5
+Neighbourhood cohesion,1918,2.2,0.5,2,1,3

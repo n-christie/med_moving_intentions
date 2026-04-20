@@ -1,3 +1,42 @@
+# Research Plan: med_moving_intentions
+
+## Paper Structure
+
+### Paper 1 — Intentional Relocation (RQ1, RQ2, RQ3, Survival)
+Scripts: `paper/paper1/analysis/`
+- `01_RQ1.R` — Do moving intentions predict relocation? (binary logistic)
+- `02_RQ2.R` — Do housing factors predict relocation independent of intentions?
+- `03_RQ3.R` — Among intenders, what predicts blocked relocation?
+- `04_survival.R` — Cox proportional hazards model for time-to-relocation
+
+### Paper 2 — Reactive/Unexpected Relocation (RQ3 reframe, RQ4, LPA)
+Scripts: `paper/paper2/analysis/`
+- `01_RQ3_blocked.R` — Blocked intenders: macro-economic/structural framing
+- `02_RQ4.R` — Among non-intenders, what predicts unexpected relocation?
+- `03_LPA.R` — Latent profile analysis of baseline person-environment fit
+
+### Shared Descriptive
+Scripts: `paper/descriptive/`
+- `00_cohort_tracking.R` — Full cohort attrition, Table 1, longitudinal change
+
+## Output Conventions
+
+All paper-specific outputs save relative to project root:
+
+| Type | Location | Format |
+|------|----------|--------|
+| Figures | `paper/paperX/figures/` | PNG (300 dpi) |
+| Tables  | `paper/paperX/tables/`  | CSV |
+| Models  | `paper/paperX/models/`  | RDS |
+| Descriptive tables | `paper/descriptive/tables/` | CSV |
+
+## Primary Dataset
+`data/processed/panel_merged.rds` (5,874 × 901; long format, 3 rows/person)
+All analysis scripts filter to `wave == "T1"` for baseline cross-sectional analyses.
+Survival script additionally joins T3 dates for censoring.
+
+---
+
 # Register Data Integration Plan
 
 ## Status: Pending — data preparation in progress
