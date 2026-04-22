@@ -1,0 +1,552 @@
+---
+title: "Beyond Ageing in Place: Person–Environment Fit, Moving Intentions, and the Realisation of Residential Transitions Among Older Adults"
+subtitle: ""
+date: "2026-04-22"
+format:
+  docx:
+    toc: false
+    toc-depth: 3
+    number-sections: false
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+library(tidyverse)
+library(flextable)
+
+set_flextable_defaults(fonts_ignore = TRUE)
+
+ft_style <- function(ft, caption = NULL) {
+  ft |>
+    theme_booktabs() |>
+    autofit() |>
+    set_caption(caption = caption)
+}
+
+fmt_p <- function(p) ifelse(p < 0.001, "< .001", sprintf("%.3f", p))
+
+rq1_reloc   <- read_csv("tables/RQ1_relocation_by_intention.csv",    show_col_types = FALSE)
+rq1_m1      <- read_csv("tables/RQ1_m1_coefficients.csv",            show_col_types = FALSE)
+rq1_m2      <- read_csv("tables/RQ1_m2_coefficients.csv",            show_col_types = FALSE)
+rq1_fit     <- read_csv("tables/RQ1_model_fit.csv",                  show_col_types = FALSE)
+
+rq2_desc    <- read_csv("tables/RQ2_housing_descriptives.csv",       show_col_types = FALSE)
+rq2_coef    <- read_csv("tables/RQ2_all_coefficients.csv",           show_col_types = FALSE)
+rq2_fit     <- read_csv("tables/RQ2_model_fit.csv",                  show_col_types = FALSE)
+rq2_lrt     <- read_csv("tables/RQ2_lrt.csv",                        show_col_types = FALSE)
+
+rq3_sample  <- read_csv("tables/RQ3_intender_sample.csv",            show_col_types = FALSE)
+rq3_obs     <- read_csv("tables/RQ3_obstacle_prevalence.csv",        show_col_types = FALSE)
+rq3_coef    <- read_csv("tables/RQ3_all_coefficients.csv",           show_col_types = FALSE)
+rq3_fit     <- read_csv("tables/RQ3_model_fit.csv",                  show_col_types = FALSE)
+rq3_lrt     <- read_csv("tables/RQ3_lrt.csv",                        show_col_types = FALSE)
+
+surv_sample <- read_csv("tables/survival_sample.csv",                show_col_types = FALSE)
+surv_m2     <- read_csv("tables/survival_cox_m2.csv",                show_col_types = FALSE)
+surv_strat  <- read_csv("tables/survival_cox_stratified.csv",        show_col_types = FALSE)
+
+# Helper: tidy a model data frame into Term | OR | 95% CI | p columns
+tidy_reg <- function(df, term_col = "term", est = "estimate",
+                     lo = "conf.low", hi = "conf.high", pv = "p.value") {
+  df |>
+    mutate(
+      OR    = sprintf("%.2f", .data[[est]]),
+      CI    = sprintf("%.2f, %.2f", .data[[lo]], .data[[hi]]),
+      p_fmt = fmt_p(.data[[pv]])
+    ) |>
+    rename(Term = all_of(term_col)) |>
+    select(Term, OR, `95% CI` = CI, p = p_fmt)
+}
+
+term_labels_rq1 <- c(
+  "intention_timeframe1\u20132 years" = "Intention: 1\u20132 years",
+  "intention_timeframe< 1 year"       = "Intention: < 1 year",
+  "age"                               = "Age (per year)",
+  "sexWoman"                          = "Sex: Woman",
+  "srh"                               = "Self-rated health"
+)
+
+term_labels_rq2 <- c(
+  term_labels_rq1,
+  "housing_suitability"    = "Housing suitability",
+  "home_satisfaction"      = "Home satisfaction",
+  "neighbourhood_cohesion" = "Neighbourhood cohesion"
+)
+```
+
+\newpage
+
+# Abstract
+
+**Background.** Ageing in place is a cornerstone of public health and housing policy, yet its benefits depend on the quality of the person–environment fit. When the dwelling no longer supports independence, safety, or participation, relocation to a more suitable environment may itself be the health-promoting choice. Older adults who register on housing company interest lists provide a unique, information-rich window into this transition process: they have already signalled perceived person–environment misfit through a concrete behavioural step.
+
+**Objectives.** Drawing on person–environment fit theory and the proactive ageing framework, this paper asks: (RQ1) how reliably do self-reported moving intentions predict actual residential transition over three years? (RQ2) Do objective and subjective indicators of person–environment fit (housing suitability, home satisfaction, neighbourhood cohesion) predict relocation independently of intentions? (RQ3) Among those intending to move, which factors prevent the transition to a better-fitting environment?
+
+**Methods.** Prospective longitudinal study (*N* = 1,958) nested within the Prospective RELOC-AGE project (Sweden; T1 = 2021, T2 = 2022, T3 = 2024). Relocation outcomes were ascertained from a linked national population register (LISA). Binary logistic regression and Cox proportional hazards models were used.
+
+**Results.** Moving intentions were strong predictors of realised relocation: those expecting to move within one year had 22 times the odds of having relocated by T3 (OR = 22.3, 95% CI [15.9, 31.7]). Home satisfaction independently delayed relocation, consistent with place attachment theory, while housing suitability accelerated it, consistent with proactive environmental restructuring. Among intenders, caring for dependents was the sole significant barrier to completing a planned move (OR = 0.17).
+
+**Conclusions.** For older adults who have signalled readiness to relocate, the realisation of that transition is shaped by person–environment fit dimensions and by social caregiving obligations. Identifying and supporting this group, especially those held in place by family responsibilities, is a concrete lever for policies that promote safe, equitable ageing in the right place.
+
+**Keywords:** person–environment fit, ageing in the right place, proactive ageing, moving intentions, residential relocation, housing, older adults, environmental gerontology
+
+\newpage
+
+# Introduction
+
+Ageing in place, the goal of living safely and independently in one's own home and community for as long as possible, has become the dominant paradigm in public health and housing policy internationally (WHO, 2015, 2023). Yet ageing in place is not inherently beneficial. Its value depends critically on whether the person and their environment remain well matched: when the dwelling becomes physically unsuitable, socially isolating, or functionally incompatible with the person's needs and capacities, staying in place can compromise rather than support independent functioning, quality of life, and health (Golant, 2017; Oswald et al., 2007). This tension has prompted a growing call to reframe the policy goal not merely as ageing *in* place, but ageing *in the right place*, an orientation that acknowledges the active role of housing decisions in supporting active and healthy ageing (Golant, 2017; WHO, 2015).
+
+Person–environment (PE) fit theory provides the conceptual backbone for this reorientation. Within environmental gerontology, PE fit refers to the dynamic congruence between an older person's functional profile and the demands and affordances of their physical and social environment (Iwarsson, 2005). A well-established body of evidence links poor PE fit, particularly housing inaccessibility, to dependence in activities of daily living, reduced participation, and diminished wellbeing (Iwarsson, 2005; Oswald et al., 2007; Granbom et al., 2019). Housing that is usable and accessible supports independence and sustains the home as a starting point for meaningful activity (Fänge & Iwarsson, 2003; Kylén et al., 2019). Critically, PE fit is not static: it evolves as both the person (through ageing, illness, or life events) and the environment (through deterioration, neighbourhood change) change over time (Bigonnesse & Chaudhury, 2022).
+
+When PE misfit emerges, older adults engage in a process of residential reasoning: an often extended, ambivalent deliberation about whether to remain, adapt the current environment, or relocate (Nygren & Iwarsson, 2009; Koss & Ekerdt, 2017; Granbom et al., 2021). Roy and colleagues' (2018) systematic review of housing decisions among older adults identifies five interacting dimensions that shape this process: the built and natural environment, socioeconomic and health factors, social relationships, economic considerations, and temporal factors. This multi-dimensionality means that the path from PE misfit to actual relocation is rarely straightforward. Moving intentions may crystallise and then dissolve; supply-side and social constraints may prevent their enactment; and place attachment, the emotional bonds that develop between a person and a long-inhabited home, can delay departure even when physical need is evident (Kylén et al., 2019; Granbom et al., 2021).
+
+The Comprehensive Preventive, Corrective, and Proactive (CPC) model of ageing (Kahana et al., 2014) provides a complementary lens. The model distinguishes three modes of environmental action: preventive (anticipating future needs before problems arise), corrective (responding to current PE misfit), and proactive (actively creating optimal environments as part of a broader ageing strategy). Voluntary relocation at an earlier stage of life, before health crises force the decision, aligns with proactive ageing. This is precisely the population that housing company interest lists capture: people who have taken a voluntary, anticipatory step toward potential relocation, making them a uniquely valuable group for studying proactive housing behaviour.
+
+Moving intentions are widely recognised as a distinct predictor of actual moves (Bradley et al., 2008; Sergeant et al., 2010), yet the translation from intention to action is far from universal. Longitudinal research in the general older population shows low annual relocation rates (4 to 5% in Sweden; Statistics Sweden), partly because representative samples capture many individuals with no interest in moving. Samples drawn from housing interest lists concentrate individuals in active PE deliberation, yielding higher signal-to-noise ratios for studying the intention behaviour process. Zingmark and colleagues (2025), reporting baseline characteristics of the Prospective RELOC-AGE cohort from which the present sample is drawn, found that higher home usability reduced moving intentions, while dissatisfaction with mobility opportunities and one-person household status increased them, establishing PE fit dimensions as antecedents of intention formation. The present paper asks what happens next: among those who have formed intentions, and those who have not, what determines whether relocation is actually realised over three years?
+
+The present paper addresses three research questions:
+
+- **RQ1:** How reliably do self-reported moving intentions predict actual residential relocation over a three-year period?
+- **RQ2:** Do indicators of person–environment fit at baseline (housing suitability, home satisfaction, neighbourhood cohesion) predict realised relocation independently of stated intentions, and in what directions?
+- **RQ3:** Among those who intended to move at baseline, which factors, including perceived barriers across the built environment, social, and economic dimensions, are associated with *not* having relocated after three years?
+
+A supplementary survival analysis examines how PE fit dimensions shape the *timing* of relocation, adding a temporal dimension consistent with the longitudinal nature of residential decision-making.
+
+\newpage
+
+# Methods
+
+## Study design and data sources
+
+This paper reports longitudinal findings from the Prospective RELOC-AGE study (ClinicalTrials.gov NCT04765696; Zingmark et al., 2021), a prospective mixed-methods cohort designed to examine associations among housing, relocation, and active and healthy ageing in Sweden. Three survey waves were conducted: T1 (2021), T2 (2022), and T3 (2024). Survey data were linked to the Swedish Longitudinal Integration Database for Health Insurance and Labour Market Studies (LISA), a national administrative register, to obtain objective relocation outcomes including date of registered address change.
+
+## Participants
+
+Participants were adults aged 55 years and older who had registered on an interest list at one of three Swedish housing companies (two local public housing companies and one national provider of tenant-owned dwellings), indicating an active interest in potential relocation. Registration on such a list represents a concrete, proactive behavioural step beyond a passive wish to move, making this sample theoretically informative for studying the transition from PE deliberation to action (Kahana et al., 2014; Zingmark et al., 2025). The baseline sample comprised *N* = 1,958 individuals. Response rates at follow-up were 76.7% at T2 and 66.2% at T3. Relocation outcomes from the national register were available regardless of survey response status at follow-up, enabling near-complete ascertainment of the primary outcome. Baseline characteristics are presented in Table 1.
+
+```{r table-1-desc}
+tribble(
+  ~Characteristic,                           ~Value,
+  "Age, mean (SD)",                           "68.7 (7.7)",
+  "Age, range",                               "54 to 90 years",
+  "Sex: Women, n (%)",                        "1,084 (55.4%)",
+  "Self-rated health (1 to 5), mean (SD)",    "3.5 (1.0)",
+  "Housing suitability (1 to 5), mean (SD)",  "4.7 (0.5)",
+  "Home satisfaction (1 to 5), mean (SD)",    "4.6 (0.8)",
+  "Neighbourhood cohesion (1 to 3), mean (SD)", "2.2 (0.5)",
+  "Moving intention: 2+ years, n (%)",        "1,286 (65.7%)",
+  "Moving intention: 1 to 2 years, n (%)",    "385 (19.7%)",
+  "Moving intention: < 1 year, n (%)",        "224 (11.4%)"
+) |>
+  flextable() |>
+  ft_style(caption = "Table 1. Baseline sample characteristics (T1, N = 1,958).")
+```
+
+## Sample attrition
+
+Figure 0 shows cohort flow across the three survey waves. Relocation outcomes were ascertained for all enrolled participants via register linkage (LISA), regardless of survey response at follow-up. A total of 30 deaths occurred during the study period (10 between T1 and T2; 14 between T2 and T3; 6 at or after T3). Twenty-one participants had no register match and were excluded from analyses requiring register-derived outcomes.
+
+```{mermaid}
+%%| fig-cap: "Figure 0. Cohort flow diagram."
+%%| fig-width: 6
+
+flowchart TD
+    A["Registered on housing company interest list\nEnrolled at T1\nN = 1,958"]
+
+    A --> B["T1 2021\nSurvey completed\nn = 1,958 (100%)"]
+
+    B --> D1["Lost to follow-up T1 to T2\nn = 457\n(10 deaths; 447 non-response)"]
+    B --> C["T2 2022\nSurvey completed\nn = 1,501 (76.7%)"]
+
+    C --> D2["Lost to follow-up T2 to T3\nn = 205\n(14 deaths; 191 non-response)"]
+    C --> E["T3 2024\nSurvey completed\nn = 1,296 (66.2%)"]
+
+    B -. "Register linkage (LISA)\nOutcomes ascertained for all enrolled" .-> F
+
+    E --> F["Analytical samples\nRQ1 and RQ2 (T1 baseline): n = 1,890\nRQ3 (intenders only): n = 609\nSurvival analysis: n = 1,890"]
+
+    D1:::excl
+    D2:::excl
+
+    classDef excl fill:#f5f5f5,stroke:#aaa,color:#555,font-style:italic
+```
+
+## Measures
+
+**Outcome.** Relocation was defined as a registered change of address from the baseline dwelling, as recorded in LISA. This register-based ascertainment avoids self-report bias and captures moves regardless of subsequent survey participation. Relocation date was used for survival analyses.
+
+**Moving intentions** were assessed with a single item asking respondents when they expected to move (VAR024), recoded into three categories: less than 1 year, 1 to 2 years, and 2 or more years (reference). This item operationalises PE misfit as a subjective, time-grounded appraisal: shorter intended timeframes reflect greater urgency in perceived need for environmental change (Bradley et al., 2008; Sergeant et al., 2010; Zingmark et al., 2025).
+
+**Person–environment fit indicators.** Three continuous measures were included as proxies for distinct dimensions of PE fit, following the Roy et al. (2018) taxonomy of housing decision factors:
+
+- *Housing suitability* (built environment dimension): whether the current dwelling is physically suited to the respondent's needs and functional capacity (1 to 5 scale). This parallels the home usability construct central to Prospective RELOC-AGE's assessment framework (Fänge & Iwarsson, 2003; Granbom et al., 2019; Zingmark et al., 2025).
+- *Home satisfaction* (temporal dimension): overall satisfaction with the current dwelling (1 to 5 scale), capturing the subjective and affective dimension of residential quality and place attachment (Kylén et al., 2019).
+- *Neighbourhood cohesion* (social dimension): perceived social cohesion with neighbours and the surrounding neighbourhood (1 to 3 scale), indexing the social PE fit component (Roy et al., 2018).
+
+**Perceived barriers to relocation.** Among intenders, a battery of items (VAR030) assessed perceived obstacles to moving: financial constraints, limited housing supply, lack of energy or motivation, own health, partner health, responsibility for dependents, and bulky possessions. These map onto the economic, built environment, health, and social dimensions of the Roy et al. (2018) framework.
+
+**Covariates.** Age (continuous, years), sex (Man/Woman), and self-rated health (SRH; 1 to 5 scale) were included as covariates. In the context of the CPC model (Kahana et al., 2014), age and health capacity are understood as indicators of the personal resources available for proactive environmental restructuring.
+
+## Analysis
+
+**RQ1 and RQ2** used binary logistic regression on the full analytical sample (T1 baseline). Three models were estimated for RQ1: M0 (null), M1 (intentions only), M2 (intentions plus age, sex, and SRH). For RQ2, three additional models sequentially added housing suitability (M3), home satisfaction (M4), neighbourhood cohesion (M5), and all three PE fit indicators simultaneously (M6, full model). Likelihood ratio tests were used to evaluate the incremental contribution of each PE dimension. Model fit was assessed with AIC and Nagelkerke's pseudo R-squared.
+
+**RQ3** used binary logistic regression restricted to intenders (VAR024 = 1 or 2). Four models were estimated: M1 (demographics plus intention urgency), M2 (plus PE fit indicators), M3 (plus perceived obstacles), M4 (full model). Common complete-case samples were maintained across all four models to enable direct model comparisons.
+
+**Survival analysis.** Cox proportional hazards models estimated time to first register-recorded relocation in months from the T1 survey date. Censoring rules: event equals register-recorded relocation date; censored at T3 survey date for non-relocated T3 respondents; administrative censoring at study end (2024-11-13) for those without a T3 response. The proportional hazards assumption was evaluated using Schoenfeld residuals. A stratified Cox model (stratified by intention timeframe) was adopted as the primary model following detection of time-varying hazard ratios for intention groups in the unstratified model.
+
+\newpage
+
+# Results
+
+## RQ1: Do moving intentions predict realised relocation?
+
+The analytical sample comprised individuals with complete data on the outcome, intentions, and covariates. Relocation rates by intention timeframe are shown in Table 2 and Figure 1.
+
+```{r table-rq1-reloc}
+rq1_reloc |>
+  rename(
+    `Intention timeframe` = intention_timeframe,
+    `N`                   = n,
+    `N relocated`         = n_relocated,
+    `% relocated`         = pct
+  ) |>
+  flextable() |>
+  ft_style(caption = "Table 2. Realised relocation rates by moving intention timeframe (RQ1 sample).")
+```
+
+![Figure 1. Percentage relocated by baseline moving intention timeframe.](../../docs/figures/fig_relocation_by_intention.png)
+
+Relocation rates showed a steep gradient: 10.4% among those not planning to move for two or more years, rising to 27.2% for 1 to 2 year intenders and 71.3% for those expecting to move within a year. Logistic regression results for the unadjusted (M1) and adjusted (M2) models are presented in Table 3.
+
+```{r table-rq1-coef}
+bind_rows(
+  rq1_m1 |> mutate(model = "M1: Unadjusted"),
+  rq1_m2 |> mutate(model = "M2: Adjusted")
+) |>
+  mutate(term = recode(term, !!!term_labels_rq1)) |>
+  tidy_reg() |>
+  mutate(Model = bind_rows(
+    rq1_m1 |> mutate(model = "M1: Unadjusted"),
+    rq1_m2 |> mutate(model = "M2: Adjusted")
+  )$model) |>
+  select(Model, Term, OR, `95% CI`, p) |>
+  flextable() |>
+  merge_v(j = "Model") |>
+  valign(j = "Model", valign = "top") |>
+  ft_style(caption = "Table 3. Logistic regression: moving intentions predicting realised relocation (RQ1). OR = odds ratio. Reference category: intention 2+ years.")
+```
+
+```{r table-rq1-fit}
+rq1_fit |>
+  mutate(nagelkerke_r2 = ifelse(is.na(nagelkerke_r2), "—", sprintf("%.3f", nagelkerke_r2))) |>
+  rename(
+    Model           = model,
+    `Nagelkerke R²` = nagelkerke_r2,
+    `ΔAIC vs null`  = delta_aic
+  ) |>
+  flextable() |>
+  ft_style(caption = "Table 4. Model fit statistics for RQ1 models.")
+```
+
+Moving intentions were strongly and significantly associated with realised relocation. In the adjusted model (M2), the odds of relocation were 3.59 times higher for 1 to 2 year intenders (95% CI: 2.67, 4.83; *p* < .001) and 22.31 times higher for less-than-1-year intenders (95% CI: 15.86, 31.74; *p* < .001) relative to the non-intending reference group. The adjusted model explained 28.8% of variance (Nagelkerke R² = 0.288). Older age was independently associated with reduced odds of relocation (OR = 0.97 per year; 95% CI: 0.95, 0.99; *p* = .001). Sex and self-rated health were not significant.
+
+![Figure 2. Forest plot: Moving intentions predicting realised relocation (RQ1). Odds ratios from M1 (unadjusted) and M2 (adjusted) models. Reference category: intention 2+ years.](figures/RQ1_forest.png)
+
+\newpage
+
+## RQ2: Do person–environment fit indicators predict relocation beyond intentions?
+
+Descriptive statistics for the three PE fit measures are shown in Table 5.
+
+```{r table-rq2-desc}
+rq2_desc |>
+  mutate(Variable = recode(var,
+    "housing_suitability"    = "Housing suitability (1 to 5)",
+    "home_satisfaction"      = "Home satisfaction (1 to 5)",
+    "neighbourhood_cohesion" = "Neighbourhood cohesion (1 to 3)"
+  )) |>
+  select(Variable, Mean = mean, SD = sd) |>
+  flextable() |>
+  ft_style(caption = "Table 5. Descriptive statistics for person–environment fit indicators (RQ2 analytical sample).")
+```
+
+Table 6 presents coefficients from the full PE fit model (M6). Table 7 shows model fit and likelihood ratio test results for all RQ2 models.
+
+```{r table-rq2-coef}
+rq2_coef |>
+  filter(model == "M6") |>
+  mutate(term = recode(term, !!!term_labels_rq2)) |>
+  tidy_reg() |>
+  flextable() |>
+  ft_style(caption = "Table 6. Full PE fit model (M6): predictors of realised relocation (RQ2). OR = odds ratio. Reference: intention 2+ years, Male.")
+```
+
+```{r table-rq2-fit}
+lrt_lookup <- rq2_lrt |>
+  mutate(model_key = recode(model,
+    "M3" = "M3 (+suitability)",
+    "M4" = "M4 (+satisfaction)",
+    "M5" = "M5 (+cohesion)",
+    "M6" = "M6 (full PE fit)"
+  )) |>
+  select(model_key, p_value)
+
+rq2_fit |>
+  mutate(model = recode(model, "M6 (full housing)" = "M6 (full PE fit)")) |>
+  left_join(lrt_lookup, by = c("model" = "model_key")) |>
+  mutate(
+    lrt_p_fmt = case_when(
+      is.na(p_value) ~ "—",
+      p_value < .001 ~ "< .001",
+      TRUE           ~ sprintf("%.3f", p_value)
+    ),
+    nagelkerke_r2 = sprintf("%.3f", nagelkerke_r2)
+  ) |>
+  rename(
+    Model           = model,
+    `Nagelkerke R²` = nagelkerke_r2,
+    `ΔAIC vs M2`    = delta_aic,
+    `LRT p vs M2`   = lrt_p_fmt
+  ) |>
+  select(Model, AIC, `Nagelkerke R²`, `ΔAIC vs M2`, `LRT p vs M2`) |>
+  flextable() |>
+  ft_style(caption = "Table 7. Model fit and likelihood ratio tests for RQ2 models (vs adjusted baseline M2).")
+```
+
+The full PE fit model (M6) improved significantly over the intentions-adjusted baseline (LRT *p* = .010, ΔAIC = 5.5). Two of three PE fit dimensions were independently significant. Home satisfaction was a negative predictor of relocation (OR = 0.75; 95% CI: 0.63, 0.90; *p* = .002): those more satisfied with their current dwelling were less likely to have relocated, even after accounting for their stated intentions. Housing suitability was a positive predictor (OR = 1.43; 95% CI: 1.08, 1.91; *p* = .013): those in objectively more suitable dwellings were more likely to have relocated. Neighbourhood cohesion was not a significant predictor. Moving intentions remained strongly significant across all models.
+
+![Figure 3. Forest plot: PE fit indicators predicting realised relocation, full model M6 (RQ2). Adjusted for age, sex, SRH, and intention timeframe.](figures/RQ2_forest.png)
+
+\newpage
+
+## RQ3: Barriers to realised relocation among intenders
+
+The intender sample comprised 609 individuals (VAR024 = 1 or 2). Table 8 shows relocation rates by intention urgency, and Table 9 shows the prevalence of perceived barriers across the Roy et al. (2018) dimensions.
+
+```{r table-rq3-sample}
+rq3_sample |>
+  rename(
+    `Intention urgency` = intention_level,
+    `N`                 = n,
+    `N relocated`       = relocated,
+    `% relocated`       = pct
+  ) |>
+  flextable() |>
+  ft_style(caption = "Table 8. Realised relocation rates by intention urgency among intenders (RQ3 sample).")
+```
+
+```{r table-rq3-obstacles}
+rq3_obs |>
+  rename(`Perceived barrier` = obstacle, `N endorsed` = n_endorsed, `%` = pct) |>
+  flextable() |>
+  ft_style(caption = "Table 9. Prevalence of perceived barriers to relocation among intenders (N = 609).")
+```
+
+Thirty percent of intenders endorsed at least one perceived barrier. The most common were limited housing supply (17.2%, built environment dimension) and financial constraints (12.3%, economic dimension). Table 10 presents results from M3 (demographics plus intention urgency plus perceived barriers), which achieved the best model fit of all four RQ3 models.
+
+```{r table-rq3-coef}
+rq3_coef |>
+  filter(model == "M3") |>
+  tidy_reg() |>
+  mutate(
+    sig = {
+      pv <- rq3_coef |> filter(model == "M3") |> pull(p.value)
+      case_when(pv < .001 ~ "***", pv < .01 ~ "**", pv < .05 ~ "*", TRUE ~ "")
+    }
+  ) |>
+  flextable() |>
+  ft_style(caption = "Table 10. Logistic regression among intenders: M3 (demographics + intention urgency + perceived barriers; best AIC). OR = odds ratio. Reference: intention 1 to 2 years.")
+```
+
+```{r table-rq3-fit}
+lrt_rq3_lookup <- bind_rows(
+  tibble(model_key = "M1 (demo + intention)", p_value = NA_real_),
+  rq3_lrt |> mutate(model_key = recode(model,
+    "M2" = "M2 (+housing)",
+    "M3" = "M3 (+obstacles)",
+    "M4" = "M4 (full)"
+  )) |> select(model_key, p_value)
+)
+
+rq3_fit |>
+  left_join(lrt_rq3_lookup, by = c("model" = "model_key")) |>
+  mutate(
+    lrt_p_fmt = case_when(
+      is.na(p_value) ~ "—",
+      p_value < .001 ~ "< .001",
+      TRUE           ~ sprintf("%.3f", p_value)
+    ),
+    nagelkerke_r2 = sprintf("%.3f", nagelkerke_r2)
+  ) |>
+  rename(
+    Model           = model,
+    `Nagelkerke R²` = nagelkerke_r2,
+    `ΔAIC vs M1`    = delta_aic,
+    `LRT p vs M1`   = lrt_p_fmt
+  ) |>
+  select(Model, AIC, `Nagelkerke R²`, `ΔAIC vs M1`, `LRT p vs M1`) |>
+  flextable() |>
+  ft_style(caption = "Table 11. Model fit and likelihood ratio tests for RQ3 models (vs M1 baseline).")
+```
+
+Among the eight perceived barriers, only responsibility for dependents was a statistically significant predictor of not relocating (OR = 0.17; 95% CI: 0.02, 0.69; *p* = .029). This social dimension barrier was by far the strongest obstacle identified. The perceived barriers model (M3) significantly improved fit over the demographics-only baseline (LRT *p* = .013). PE fit indicators did not add significantly beyond demographics among intenders (LRT *p* = .486), suggesting that within this group, perceived obstacles rather than current housing characteristics determine whether the transition is realised.
+
+Intention urgency remained a strong predictor within the intender sample: those expecting to move within less than one year had approximately 5.7 times the odds of having relocated compared to 1 to 2 year intenders (M3: OR = 5.67; 95% CI: 3.87, 8.39; *p* < .001). Older age was again associated with reduced odds of relocation (OR = 0.96 per year; *p* = .002).
+
+![Figure 4. Forest plot: Predictors of realised relocation among intenders, M3 (RQ3). Reference: intention 1 to 2 years.](figures/RQ3_forest.png)
+
+\newpage
+
+## Supplementary: Survival analysis — PE fit and the timing of relocation
+
+The survival sample comprised *N* = 1,890 individuals with a median follow-up of 37.4 months (Table 12).
+
+```{r table-surv-sample}
+surv_sample |>
+  rename(
+    `N`                         = n,
+    `Events (relocated)`        = n_events,
+    `Censored`                  = n_censored,
+    `Censored: T3 response`     = n_t3_responded,
+    `Censored: administrative`  = n_admin_censored,
+    `Median follow-up (months)` = median_followup
+  ) |>
+  flextable() |>
+  ft_style(caption = "Table 12. Survival analysis sample summary.")
+```
+
+Figure 6 shows the Kaplan-Meier cumulative relocation probability by baseline intention group over the 37-month observation period.
+
+![Figure 6. Cumulative relocation probability by baseline moving intention (Kaplan-Meier). The three intention groups show markedly divergent trajectories from the first months of follow-up.](../../docs/figures/fig_km_intention.png)
+
+The curves illustrate the strong and immediate separation between groups. Among those expecting to move within a year, the cumulative relocation probability rises steeply in the first 12 months, reaching approximately 70% before beginning to plateau. This early concentration of events reflects rapid follow-through among urgent intenders: those who have both formed an intention and set a near-term timeframe act quickly when the opportunity arises. The 1 to 2 year group shows a more gradual rise, consistent with a planned but less urgent transition. The 2-or-more year group remains largely flat throughout the observation window, confirming that the large majority of those not expecting an imminent move did not relocate within the study period. The convergence of the three curves toward the end of follow-up suggests that some individuals who initially expressed no near-term intention later formed and acted on one, consistent with the extended and revisable nature of residential reasoning (Nygren & Iwarsson, 2009; Koss & Ekerdt, 2017).
+
+The proportional hazards assumption was violated for intention timeframe in the unstratified model (Schoenfeld chi-squared = 56.58, *p* < .001), indicating that the relative hazard of relocation between intention groups changed across the three-year observation window. This non-proportionality is visible in the Kaplan-Meier curves: the advantage of the less-than-1-year group is greatest in the first six months and attenuates thereafter as the pool of early movers is exhausted. A stratified Cox model (stratified by intention timeframe) satisfied the global PH assumption (chi-squared = 4.96, *p* = .549) and is the primary model.
+
+Table 13 shows the unadjusted Cox M2 results for reference, and Table 14 presents the primary stratified model.
+
+```{r table-surv-m2}
+surv_m2 |>
+  mutate(term = recode(term, !!!term_labels_rq1)) |>
+  tidy_reg(est = "estimate", lo = "conf.low", hi = "conf.high", pv = "p.value") |>
+  rename(`HR` = OR) |>
+  flextable() |>
+  add_footer_lines("HR = hazard ratio. Concordance = 0.758. Note: PH assumption violated for intention timeframe; stratified model is primary.") |>
+  ft_style(caption = "Table 13. Cox M2: Adjusted unstratified model (intention + age + sex + SRH).")
+```
+
+```{r table-surv-strat}
+surv_strat |>
+  mutate(term = recode(term, !!!term_labels_rq2)) |>
+  tidy_reg(est = "estimate", lo = "conf.low", hi = "conf.high", pv = "p.value") |>
+  rename(`HR` = OR) |>
+  flextable() |>
+  add_footer_lines("HR = hazard ratio. Concordance = 0.588. Intention timeframe via stratification (HR not estimable). Global PH test: p = .549.") |>
+  ft_style(caption = "Table 14. Primary model: Stratified Cox (strata = intention timeframe) with PE fit indicators and covariates.")
+```
+
+PE fit dimensions shaped the *timing* of relocation as well as its occurrence. Housing suitability (HR = 1.27; 95% CI: 1.05, 1.55; *p* = .016) was associated with faster relocation within intention strata; home satisfaction (HR = 0.84; 95% CI: 0.75, 0.95; *p* = .005) with slower relocation. Neighbourhood cohesion was not significant. Older age was associated with slower time to relocation (HR = 0.98 per year; *p* = .003), independent of intention group.
+
+![Figure 5. Forest plot: Stratified Cox model, PE fit indicators and demographic predictors of time to relocation. Intention timeframe handled via stratification.](figures/survival_cox_forest.png)
+
+\newpage
+
+# Discussion
+
+This study followed a cohort of older adults who had taken a proactive step toward potential relocation and tracked their actual residential transitions over three years via national register linkage. The findings are interpreted through the lens of person–environment fit theory, proactive ageing, and the multi-dimensional framework of housing decision factors proposed by Roy and colleagues (2018).
+
+## Intentions as valid signals of PE misfit
+
+Moving intentions were powerful predictors of realised relocation: a 22-fold difference in odds between those expecting to move within a year and those with no near-term plans validates stated intention as a meaningful and actionable signal of PE misfit in this population. This extends the cross-sectional baseline findings of Zingmark et al. (2025), who showed that usability dimensions shape intention formation, into the longitudinal domain, confirming that the intentions formed in this population carry substantial behavioural weight. The result is consistent with the broader literature establishing moving intentions as a distinct predictor of actual moves (Bradley et al., 2008; Sergeant et al., 2010), and supports the use of housing interest lists as population-level touchpoints for identifying those in active PE deliberation.
+
+The relocation rate gradient (10% to 27% to 71% across the three intention timeframe groups) also has a practical dimension: even among those who did not intend to move within two years, approximately one in ten had relocated by the end of the observation period. This implies that a substantial minority of individuals on housing interest lists undergo relocation without a proximal declared intention, underscoring the value of the list as a general population enrichment strategy beyond intent stratification alone.
+
+## PE fit dimensions as independent drivers of transition
+
+Beyond intentions, two PE fit dimensions emerged as independent predictors. Home satisfaction delayed relocation (OR = 0.75; HR = 0.84), consistent with place attachment theory and with the concept of residential normalcy, the subjective comfort and sense of fit that develops through long habitation (Kylén et al., 2019; Granbom et al., 2021). High satisfaction with the current home acts as a counterweight to the intention to move: even among those who have registered for alternative housing, affective bonds to the existing dwelling moderate the speed and likelihood of departure. This finding aligns with Nygren and Iwarsson's (2009) observation that the negotiation of relocation is extended and ambivalent even when the need is apparent.
+
+The positive association between housing suitability and relocation (OR = 1.43; HR = 1.27) is, at first glance, counterintuitive: those in more suitable dwellings were *more* likely to have relocated. This contrasts with Zingmark et al.'s (2025) finding that high home usability reduced moving intentions at baseline, and warrants careful interpretation. We propose that the two findings are not contradictory but reflect different stages of the PE deliberation process. High usability reduces the urgency of forming an intention to move. But among those who have already formed intentions, or when controlling for intention as our models do, high suitability reflects greater functional capacity and housing-related resources that facilitate enacting the transition. This is consistent with the environmental proactivity hypothesis and the CPC model's proactive mode (Kahana et al., 2014): those with higher current PE fit are more able to act on housing plans before functional decline makes relocation more difficult. Granbom et al.'s (2019) finding that household accessibility facilitates relocation among older adults in the United States supports this interpretation: a more usable environment does not reduce the desire to relocate but enhances the ability to do so when the decision has been made.
+
+Neighbourhood cohesion was not a significant predictor of relocation in any model. This may reflect the nature of the target housing in this population: older adults registering with senior housing providers are often moving into purpose-built communities with structured social environments, meaning that existing neighbourhood ties do not act as a brake on transition in the way they might in general population moves (Roy et al., 2018).
+
+## Barriers to proactive environmental restructuring
+
+Among those who had explicitly stated an intention to move, the barriers model (M3) significantly improved fit over demographics alone, but among the eight barrier types assessed, only the presence of dependent-care responsibilities was a statistically significant predictor of not having relocated (OR = 0.17). This social dimension barrier, one of the six dimensions in the Roy et al. (2018) framework, had a substantially stronger effect than supply-side or financial barriers, even though the latter were far more commonly endorsed (17.2% and 12.3% respectively, versus 3.1% for dependents). The implication is that systemic barriers such as limited housing supply and financial constraints, while prevalent, do not discriminate between those who ultimately move and those who do not. Responsibility for a dependent, by contrast, appears to impose a near-insurmountable constraint: those with dependent-care obligations had only 17% of the odds of having relocated compared to equivalently motivated peers without such obligations.
+
+This finding has direct relevance to the inclusive ageing in place framing of this Special Issue. Individuals caring for dependents while themselves intending to relocate represent a hidden, high-need group: they have expressed a desire for better PE fit but are unable to act on it due to competing social obligations. Without targeted support, this group risks prolonged PE misfit and the health consequences associated with it, including functional decline, carer burden, and reduced quality of life (Oswald et al., 2007; Roy et al., 2018).
+
+Older age consistently reduced both the odds of relocation (RQ1, RQ3) and the hazard of relocation (survival analysis), independent of intention and health status. This pattern is consistent with the environmental docility principle in ecological models of ageing: as personal competence decreases, the environmental barriers to action become increasingly binding (Lawton, 1986). Older adults seeking to relocate face greater practical, logistical, and psychological barriers to completing the transition, even after controlling for health status. This suggests an optimal window for proactive environmental action: earlier in the ageing trajectory, while personal resources are sufficient to execute the transition (Kahana et al., 2014).
+
+## Timing of transitions
+
+The survival analysis extends the binary relocation findings by demonstrating that PE fit dimensions shape not only *whether* older adults in this population relocate but *when*. The time-varying hazard ratios for intention groups, requiring stratification, are consistent with the extended, oscillating nature of residential reasoning described in qualitative work (Koss & Ekerdt, 2017; Granbom et al., 2021; Nygren & Iwarsson, 2009): the relative advantage of near-term intenders over non-intenders is not constant across three years, suggesting that intention timing evolves and that some of those initially not intending to move later form and act on intentions. The finding that housing suitability accelerates and home satisfaction delays the hazard of relocation, within intention strata, further supports the characterisation of these PE fit dimensions as distinct mechanisms in the transition process.
+
+## Policy implications
+
+Three policy implications follow from these findings. First, housing interest lists function as a scalable, low-cost mechanism for identifying older adults in active PE deliberation, a population not accessible through general population surveys. Proactive outreach to this group, timed to the window before functional decline limits action, could support preventive housing transitions aligned with the goals of age-friendly housing policy (WHO, 2015, 2023; Bigonnesse & Chaudhury, 2022).
+
+Second, older adults with dependent-care responsibilities who are also seeking relocation constitute a specific, unmet-need group. Policy and practice should consider carer-inclusive housing transition support, combining assistance with the logistics of relocation with services that address the dependent-care constraint, such as short-term respite provision or coordinated concurrent housing placement for the person with care needs.
+
+Third, the finding that high home satisfaction delays relocation even when controlling for intentions suggests that place attachment should not be dismissed as irrational inertia, but neither should it be allowed to lead to prolonged PE misfit with attendant health risks. Housing advice and occupational therapy services that help older adults distinguish between healthy place attachment and harmful reluctance to act on misfit could support more timely, voluntary transitions (Dalistan et al., 2023; Walker & McNamara, 2013).
+
+## Limitations
+
+The sample is drawn from housing interest lists in Sweden and is not representative of the general older population: it is skewed toward better health, higher socioeconomic status, and proactive ageing orientation (Zingmark et al., 2025). Findings should be interpreted as specific to this population of motivated, community-dwelling older adults in PE deliberation. The housing suitability variable is survey-measured rather than professionally assessed (see Housing Enabler; Iwarsson et al., 2012), which may introduce measurement error. The perceived obstacles battery relies on self-report and captures whether a barrier is perceived, not its objective severity. Attrition at T3 (33.8%) may introduce bias; however, register-based outcome ascertainment for all enrolled participants mitigates selective attrition as a threat to validity. Finally, the study was conducted during and immediately after the COVID-19 pandemic period, which may have influenced both housing preferences and actual relocation rates in ways that are difficult to disentangle (Lei & Liu, 2022).
+
+\newpage
+
+# References
+
+Bigonnesse, C., & Chaudhury, H. (2022). Ageing in place processes in the neighbourhood environment: A proposed conceptual framework from a capability approach. *European Journal of Ageing*, *19*(1), 63–74. https://doi.org/10.1007/s10433-020-00599-y
+
+Bradley, D. E., Longino, C. F., Stoller, E. P., & Haas, W. H. (2008). Actuation of mobility intentions among the young-old: An event-history analysis. *The Gerontologist*, *48*(2), 190–202. https://doi.org/10.1093/geront/48.2.190
+
+Dalistan, R., George, S., & Laver, K. (2023). Considering the home environment and planning for the future: A qualitative exploration of the views of older adults and individuals with older relatives. *Scandinavian Journal of Occupational Therapy*, *30*(7), 1167–1179. https://doi.org/10.1080/11038128.2023.2192027
+
+Fänge, A., & Iwarsson, S. (2003). Accessibility and usability in housing: Construct validity and implications for research and practice. *Disability and Rehabilitation*, *25*(23), 1316–1325. https://doi.org/10.1080/09638280310001616286
+
+Golant, S. M. (2017). Aging in the right place coping repertoires: The substitutability of connectivity alternatives. *Innovation in Aging*, *1*(Suppl. 1), 664. https://doi.org/10.1093/geroni/igx004.2354
+
+Granbom, M., Nkimbeng, M., Roberts, L. C., Gitlin, L. N., Taylor, J. L., & Szanton, S. L. (2021). "So I am stuck, but it's OK": Residential reasoning and housing decision-making of low-income older adults with disabilities. *Housing and Society*, *48*(1), 43–59. https://doi.org/10.1080/08882746.2020.1816782
+
+Granbom, M., Perrin, N., Szanton, S., Cudjoe, T. K. M., & Gitlin, L. N. (2019). Household accessibility and residential relocation in older adults. *The Journals of Gerontology: Series B*, *74*(7), e72–e83. https://doi.org/10.1093/geronb/gby131
+
+Granbom, M., Löfqvist, C., Horstmann, V., & Iwarsson, S. (2014). Relocation to ordinary or special housing in very old age: Aspects of housing and health. *European Journal of Ageing*, *11*, 55–65. https://doi.org/10.1007/s10433-013-0287-3
+
+Iwarsson, S. (2005). A long-term perspective on person–environment fit and ADL dependence among older Swedish adults. *The Gerontologist*, *45*(3), 327–336. https://doi.org/10.1093/geront/45.3.327
+
+Iwarsson, S., Haak, M., & Slaug, B. (2012). Current developments of the Housing Enabler methodology. *British Journal of Occupational Therapy*, *75*(11), 517–521. https://doi.org/10.4276/030802212X13522194759978
+
+Kahana, E., Kahana, B., & Lee, J. E. (2014). Proactive approaches to successful aging: One clear path through the forest. *Gerontology*, *60*(5), 466–474. https://doi.org/10.1159/000360222
+
+Koss, C., & Ekerdt, D. J. (2017). Residential reasoning and the tug of the fourth age. *The Gerontologist*, *57*(5), 921–929. https://doi.org/10.1093/geront/gnw010
+
+Kramer, C., & Pfaffenbach, C. (2016). Should I stay or should I go? Housing preferences upon retirement in Germany. *Journal of Housing and the Built Environment*, *31*, 239–256. https://doi.org/10.1007/s10901-015-9454-5
+
+Kylén, M., Löfqvist, C., Haak, M., & Iwarsson, S. (2019). Meaning of home and health dynamics among younger older people in Sweden. *European Journal of Ageing*, *16*, 305–315. https://doi.org/10.1007/s10433-019-00501-5
+
+Lawton, M. P. (1986). *Environment and aging* (2nd ed.). Center for the Study of Aging.
+
+Lei, L., & Liu, X. (2022). The COVID-19 pandemic and residential mobility intentions in the United States: Evidence from Google Trends data. *Population, Space and Place*, *28*(6), e2581. https://doi.org/10.1002/psp.2581
+
+Nygren, C., & Iwarsson, S. (2009). Negotiating and effectuating relocation to sheltered housing in old age: A Swedish study over 11 years. *European Journal of Ageing*, *6*, 177–189. https://doi.org/10.1007/s10433-009-0121-0
+
+Oswald, F., Wahl, H. W., Schilling, O., Nygren, C., Fänge, A., Sixsmith, A., Sixsmith, J., Széman, Z., Tomsone, S., & Iwarsson, S. (2007). Relationships between housing and healthy aging in very old age. *The Gerontologist*, *47*(1), 96–107. https://doi.org/10.1093/geront/47.1.96
+
+Roy, N., Dubé, R., Després, C., Freitas, A., & Légaré, F. (2018). Choosing between staying at home or moving: A systematic review of factors influencing housing decisions among frail older adults. *PLoS ONE*, *13*(1), e0189266. https://doi.org/10.1371/journal.pone.0189266
+
+Sergeant, J. F., Ekerdt, D. J., & Chapin, R. K. (2010). Older adults' expectations to move: Do they predict actual community-based or nursing facility moves within 2 years? *Journal of Aging and Health*, *22*(7), 1029–1053. https://doi.org/10.1177/0898264310368296
+
+Walker, E., & McNamara, B. (2013). Relocating to retirement living: An occupational perspective on successful transitions. *Australian Occupational Therapy Journal*, *60*(6), 445–453. https://doi.org/10.1111/1440-1630.12038
+
+World Health Organization. (2015). *World report on ageing and health*. WHO. https://iris.who.int/handle/10665/186463
+
+World Health Organization. (2023). *Housing and health guidelines*. WHO.
+
+Zingmark, M., Björk, J., Granbom, M., Gefenaite, G., Nordeström, F., Schmidt, S. M., Rantanen, T., Slaug, B., & Iwarsson, S. (2021). Exploring associations of housing, relocation, and active and healthy aging in Sweden: Protocol for a prospective longitudinal mixed methods study. *JMIR Research Protocols*, *10*(9), Article e31137. https://doi.org/10.2196/31137
+
+Zingmark, M., [co-authors]. (2025). Moving intentions among people aged 55 years or older listed with an interest in relocation at housing companies in Sweden. *[Journal forthcoming]*.
