@@ -25,6 +25,8 @@ library(haven)
 library(broom)
 library(gtsummary)
 library(gt)
+library(logistf)
+library(survival)
 
 # Primary dataset: long panel (3 rows per person); filter to T1 for baseline
 panel <- readRDS("../data/processed/panel_merged.rds")
@@ -58,20 +60,78 @@ df    <- panel |> filter(wave == "T1")
 dat   <- df |> filter(!is.na(relocated_f))
 
 # ── RQ1/RQ2 models — full sample ──────────────────────────────────────────────
+# intention_4cat separates "no stated intention" (VAR021_1 = no plans & VAR024
+# = 2+ years) from "2+ years, intends" (VAR024 = 2+ years but an active reason
+# for list registration) — the single VAR024-only variable used in earlier
+# work on this cohort blends these two groups, which relocate at very
+# different rates (8.5% vs 16.6%). See scripts/01_clean/02_recode.R section 3
+# for the full construction and the empirical rule used when the two source
+# items conflict.
 dat_rq2 <- dat |>
   filter(
-    !is.na(intention_timeframe), !is.na(age), !is.na(sex),
+    !is.na(intention_4cat), !is.na(age), !is.na(sex),
     complete.cases(pick(housing_suitability, home_satisfaction,
                         neighbourhood_cohesion))
   )
 
-m1 <- glm(relocated_f ~ intention_timeframe,
+m1 <- glm(relocated_f ~ intention_4cat,
           data = dat_rq2, family = binomial)
-m2 <- glm(relocated_f ~ intention_timeframe + age + sex + srh,
+m2 <- glm(relocated_f ~ intention_4cat + age + sex + srh,
           data = dat_rq2, family = binomial)
-m6 <- glm(relocated_f ~ intention_timeframe + age + sex + srh +
+m6 <- glm(relocated_f ~ intention_4cat + age + sex + srh +
             housing_suitability + home_satisfaction + neighbourhood_cohesion,
           data = dat_rq2, family = binomial)
+
+# ── RQ1 sequential decomposition ────────────────────────────────────────────────
+# Step A: any stated intention vs none (full dat_rq2 sample).
+# Step B: among those with any stated intention, does urgency further predict
+# relocation (subset to has_intention == "Yes").
+a1 <- glm(relocated_f ~ has_intention, data = dat_rq2, family = binomial)
+a2 <- glm(relocated_f ~ has_intention + age + sex + srh, data = dat_rq2, family = binomial)
+
+dat_rq1_intenders <- dat_rq2 |>
+  filter(has_intention == "Yes", !is.na(intention_timeframe_among_intenders))
+b1 <- glm(relocated_f ~ intention_timeframe_among_intenders,
+          data = dat_rq1_intenders, family = binomial)
+b2 <- glm(relocated_f ~ intention_timeframe_among_intenders + age + sex + srh,
+          data = dat_rq1_intenders, family = binomial)
+
+# ── RQ1 robustness: VIF, correlations, linearity, SES adjustment ───────────────
+vif_manual <- function(model) {
+  X <- model.matrix(model)[, -1, drop = FALSE]
+  vapply(colnames(X), function(cn) {
+    r2 <- summary(lm(X[, cn] ~ X[, colnames(X) != cn]))$r.squared
+    round(1 / (1 - r2), 3)
+  }, numeric(1))
+}
+rq2_vif_vals <- vif_manual(m6)
+
+rq2_cor_mat <- dat_rq2 |>
+  select(housing_suitability, home_satisfaction, neighbourhood_cohesion) |>
+  cor(use = "pairwise.complete.obs") |>
+  round(3)
+
+linearity_check <- function(model, data, var) {
+  dat_lc <- data |> mutate(.cat = factor(.data[[var]]))
+  f_lin  <- reformulate(all.vars(formula(model))[-1], response = "relocated_f")
+  f_cat  <- update(f_lin, as.formula(paste0(". ~ . - ", var, " + .cat")))
+  l <- anova(glm(f_lin, data = dat_lc, family = binomial),
+             glm(f_cat, data = dat_lc, family = binomial), test = "LRT")
+  tibble(variable = var, delta_df = l$Df[2], p_value = round(l$`Pr(>Chi)`[2], 3))
+}
+rq2_linearity_tab <- bind_rows(
+  linearity_check(m6, dat_rq2, "srh"),
+  linearity_check(m6, dat_rq2, "housing_suitability"),
+  linearity_check(m6, dat_rq2, "home_satisfaction")
+)
+
+dat_rq1_ses <- dat_rq2 |>
+  filter(!is.na(disp_ink_ke), !is.na(civil_f), !is.na(syss_f))
+m2_ses_common <- glm(relocated_f ~ intention_4cat + age + sex + srh,
+                      data = dat_rq1_ses, family = binomial)
+m2_ses        <- glm(relocated_f ~ intention_4cat + age + sex + srh +
+                        disp_ink_ke + civil_f + syss_f,
+                      data = dat_rq1_ses, family = binomial)
 
 # ── RQ3 models — intenders only ───────────────────────────────────────────────
 # VAR024 is the panel-normalised name for VAR24_T1 (2-digit → 3-digit padding)
@@ -95,6 +155,19 @@ m4_rq3 <- glm(
     obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
   data = dat_rq3, family = binomial
 )
+
+# Firth penalized logistic regression for the dependents term: only ~18
+# respondents endorse this obstacle, so the standard MLE above rests on a
+# small cell. EPV reported to show the full model is adequately powered
+# overall despite that one small-cell term.
+m4_rq3_firth <- logistf::logistf(
+  relocated_f ~ intention_level + age + sex + srh +
+    housing_suitability + home_satisfaction + neighbourhood_cohesion +
+    any_obstacle + obs_financial + obs_supply + obs_energy +
+    obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
+  data = dat_rq3
+)
+rq3_epv <- sum(dat_rq3$relocated_f == "Yes") / (length(coef(m4_rq3)) - 1)
 
 # ── RQ4 models — non-intenders only ───────────────────────────────────────────
 # VAR024 = VAR24_T1; VAR001_2 = VAR01_2_T1 (panel-normalised names)
@@ -136,7 +209,7 @@ t3_dates <- panel |>
 
 surv_dat <- dat |>
   left_join(t3_dates, by = "LopNr_PersonNr") |>
-  filter(!is.na(Date), !is.na(intention_timeframe),
+  filter(!is.na(Date), !is.na(intention_4cat),
          !is.na(age), !is.na(sex), !is.na(srh)) |>
   mutate(
     end_date    = case_when(
@@ -153,20 +226,50 @@ surv_dat_m3 <- surv_dat |>
   filter(complete.cases(pick(housing_suitability, home_satisfaction,
                              neighbourhood_cohesion)))
 
-cox_m1 <- survival::coxph(
-  survival::Surv(time_months, event) ~ intention_timeframe,
+# NOTE: strata() must be called unqualified (not survival::strata()) — coxph's
+# formula parser matches specials by literal text and does not recognise a
+# namespace-qualified call, silently treating it as an ordinary covariate
+# instead of a stratification variable. (This affected the previous version
+# of this stratified model, which was not actually stratifying.)
+cox_m1 <- coxph(
+  Surv(time_months, event) ~ intention_4cat,
   data = surv_dat)
 
-cox_m2 <- survival::coxph(
-  survival::Surv(time_months, event) ~ intention_timeframe + age + sex + srh,
+cox_m2 <- coxph(
+  Surv(time_months, event) ~ intention_4cat + age + sex + srh,
   data = surv_dat)
 
-cox_strat <- survival::coxph(
-  survival::Surv(time_months, event) ~
-    survival::strata(intention_timeframe) +
+cox_strat <- coxph(
+  Surv(time_months, event) ~
+    strata(intention_4cat) +
     age + sex + srh +
     housing_suitability + home_satisfaction + neighbourhood_cohesion,
   data = surv_dat_m3)
+
+# ── IPCW-weighted stratified Cox (sensitivity for informative T3 non-response) ──
+# See A8 below: T3 non-responders have lower income and worse self-rated
+# health than responders. Weight model matches the A8 attrition specification;
+# administratively censored cases (unknown true end time) are dropped and the
+# remainder up-weighted by 1 / P(uncensored | baseline X).
+surv_ipcw_base <- surv_dat_m3 |>
+  mutate(uncensored = as.integer(event == 1 | !is.na(Date_T3))) |>
+  filter(!is.na(disp_ink_ke), !is.na(civil_f), !is.na(syss_f), civil_f != "Other")
+
+ipcw_model <- glm(
+  uncensored ~ age + sex + srh + disp_ink_ke + civil_f + syss_f,
+  data = surv_ipcw_base |> mutate(civil_f = droplevels(civil_f)), family = binomial
+)
+
+surv_ipcw <- surv_ipcw_base |>
+  mutate(p_uncensored = predict(ipcw_model, type = "response"), ipcw = 1 / p_uncensored) |>
+  filter(uncensored == 1)
+
+cox_strat_ipcw <- coxph(
+  Surv(time_months, event) ~
+    strata(intention_4cat) +
+    age + sex + srh +
+    housing_suitability + home_satisfaction + neighbourhood_cohesion,
+  data = surv_ipcw, weights = ipcw, robust = TRUE)
 ```
 
 ---
@@ -252,7 +355,7 @@ tbl_summary(
   by = relocated_f,
   include = c(
     age, sex, srh_f,
-    intention_timeframe,
+    intention_4cat,
     housing_suitability, home_satisfaction, neighbourhood_cohesion,
     any_obstacle_f,
     obs_financial_f, obs_supply_f, obs_energy_f,
@@ -262,7 +365,7 @@ tbl_summary(
     age                    ~ "Age (years)",
     sex                    ~ "Sex",
     srh_f                  ~ "Self-rated health",
-    intention_timeframe    ~ "Expected timeframe to move",
+    intention_4cat         ~ "Moving intention category",
     housing_suitability    ~ "Housing suitability (1–5)",
     home_satisfaction      ~ "Home satisfaction (1–5)",
     neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)",
@@ -349,9 +452,9 @@ tbl_summary(
 
 **Methods:** Prospective longitudinal survey study with three time points (T1: 2021, T2: 2022, T3: 2024) among adults aged 55 or older registered on housing company interest lists in Sweden (N = 1,958). Binary logistic regression was used to model the probability of relocation, with models built sequentially from intentions and demographics through housing factors and perceived obstacles. Cox proportional hazards models used exact move dates from the Swedish tax register to account for varying follow-up length; a stratified model addressed a proportional hazards violation for intention timeframe. A supplementary latent profile analysis is reported in the appendix.
 
-**Results:** Over the three-year period, 20.6% of participants (n = 404) relocated. Baseline moving intentions were the dominant predictor: compared to those expecting to move in two or more years, those expecting to move within one year had over 20-fold higher odds of relocation (OR = 22.3, 95% CI: 15.9–31.7), and 71.4% of this group actually relocated. Home satisfaction was the only housing-related factor independently associated with relocation in the full sample (OR ≈ 0.76–0.86), though housing factors as a block added minimally beyond intentions (ΔNagelkerke R² = 0.008). Among the 609 intenders, 56% had not relocated by T3; within this group, stronger intention urgency (OR = 5.8), younger age (OR = 0.96 per year), and having dependents (OR = 0.18) were associated with relocation, while housing factors and most specific obstacles were not.
+**Results:** Over the three-year period, 20.6% of participants (n = 404) relocated. A methodological refinement separated "no stated intention to move" from "intends to move but 2+ years out" — the single item used in earlier work on this cohort blended these two groups, which relocated at very different rates (8.5% vs. 16.6%). Having formed any stated intention, rather than none, was associated with substantially higher odds of relocation (OR = 5.9, 95% CI: 4.5–7.7); among those with a stated intention, urgency closely tracked *when* relocation occurred (OR ≈ 2.2 for 1–2 years, OR ≈ 13–14 for less than 1 year, relative to 2+ years). Home satisfaction was the only housing-related factor independently associated with relocation in the full sample (OR ≈ 0.76–0.86), and variance-inflation and correlation checks confirmed this was not a collinearity artefact; housing factors as a block added minimally beyond intentions (ΔNagelkerke R² = 0.008). The intention effect was essentially unchanged after adjusting for register-measured income, marital status, and employment. Among the 609 intenders, 56% had not relocated by T3; within this group, stronger intention urgency (OR = 5.7), younger age (OR = 0.96 per year), and having dependents (Firth-corrected OR = 0.21, 95% CI: 0.04–0.81; standard OR = 0.17) were associated with relocation, while housing factors and most specific obstacles were not.
 
-**Conclusions:** Moving intentions are the strongest predictor of relocation, but 56% of intenders did not move within three years. Among blocked intenders, the gap was explained by intention urgency, age, and life-course factors rather than housing conditions, suggesting structural and market-level constraints as the primary barrier. Predictors of unexpected relocation among non-intenders are examined in a companion paper.
+**Conclusions:** Moving intentions, and particularly their stated timeframe, closely track relocation behavior, but 56% of intenders did not move within three years. Among blocked intenders, the gap was not well explained by the housing, health, or obstacle factors measured here, pointing to unmeasured barriers, potentially structural or market-related, that this dataset cannot directly test; this is explored further in a companion paper. Predictors of unexpected relocation among non-intenders are also examined there.
 
 ## Background {#p1-background}
 
@@ -377,22 +480,32 @@ The aim of Paper 1 is twofold:
 
 *Predictors of unexpected relocation among non-intenders (RQ4) are addressed in [Paper 2](#paper-2).*
 
+## Measurement note: constructing the intention variable {#intention-construction}
+
+Moving intentions were constructed from two items, both administered to the full baseline sample (this is not a skip-logic pair). The first (VAR024) asked when respondents expected to move: less than 1 year, 1–2 years, or 2 or more years. The second (VAR021_1) asked why respondents had joined the housing-company interest list, including the option "I am on the waiting list but have no plans to move at this time" (yes/no).
+
+Earlier work on this cohort recoded VAR024 alone, treating "2 or more years" as a single lowest-urgency reference category. Crossing the two items shows this blends two groups with very different realized-relocation rates: those who also endorsed "no plans to move" (n = 979, 8.5% relocated) and those who gave an active reason for list registration despite a distant timeframe (n = 307, 16.6% relocated). A four-level variable is used throughout Paper 1 instead: *no stated intention* (VAR021_1 = "no plans" and VAR024 = "2+ years"; reference), *2+ years, intends*, *1–2 years*, and *< 1 year*.
+
+When the two items conflicted (endorsed "no plans" but gave a shorter timeframe; n = 102), the stated timeframe was treated as authoritative: these respondents relocated at 27.5%, closer to the intender groups, indicating the timeframe item better captured their eventual behavior. Respondents missing VAR024 (n = 63, 3.2%) are excluded from analyses using this variable. RQ3 continues to use the narrower *expecting to move within 2 years* definition (1–2 years or < 1 year) for continuity with earlier work.
+
 ## Results {#p1-results}
 
 Over the three-year study period, **20.6% of participants (n = 404)** relocated at least once.
 
 ### RQ1: Moving intentions predict relocation {#rq1}
 
-Baseline moving intentions were strongly predictive of actual relocation. Among those who expected to move within a year, **71.4%** actually did so; among those expecting to wait two or more years, only **10.4%** relocated.
+Baseline moving intentions were strongly predictive of actual relocation. Among those who expected to move within a year, **71.4%** actually did so; among those with **no stated intention** to move, only **8.5%** relocated, roughly half the rate of those who still expected 2 or more years but had given an active reason for joining the housing-company interest list (**16.6%**).
+
+This four-way split is a methodological refinement over earlier work on this cohort, which used a single item (VAR024, expected timeframe) with "2+ years" as a blended reference category. Crossing that item with a second one (VAR021_1: "on the list but no plans to move at this time") showed that "2+ years" actually contains two groups with very different relocation rates, so the reference category here is genuine non-intenders only. See the [measurement note above](#intention-construction) for the full construction and how the two items were reconciled when they conflicted.
 
 ![Relocation rates by baseline moving intention](figures/fig_relocation_by_intention.png){fig-alt="Bar chart showing relocation rates by intention timeframe." width="70%"}
 
-**Model equations** (reference: intention 2+ years; Man):
+**Model equations** (reference: no stated intention; Man):
 
 $$
 \begin{aligned}
-\text{M1:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_2\,\text{Int}_{<1\,\text{yr}} \\[6pt]
-\text{M2:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_2\,\text{Int}_{<1\,\text{yr}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} + \beta_5\,\text{SRH}
+\text{M1:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{2+\text{yr, intends}} + \beta_2\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_3\,\text{Int}_{<1\,\text{yr}} \\[6pt]
+\text{M2:} \quad \text{logit}(p_i) &= \beta_0 + \beta_1\,\text{Int}_{2+\text{yr, intends}} + \beta_2\,\text{Int}_{1\text{–}2\,\text{yr}} + \beta_3\,\text{Int}_{<1\,\text{yr}} + \beta_4\,\text{Age} + \beta_5\,\text{Sex} + \beta_6\,\text{SRH}
 \end{aligned}
 $$
 
@@ -402,11 +515,11 @@ $$
 tbl_merge(
   list(
     tbl_regression(m1, exponentiate = TRUE,
-                   label = list(intention_timeframe ~ "Intention timeframe")) |>
+                   label = list(intention_4cat ~ "Intention category")) |>
       modify_header(estimate ~ "**OR**") |>
       bold_p(t = 0.05),
     tbl_regression(m2, exponentiate = TRUE,
-                   label = list(intention_timeframe ~ "Intention timeframe",
+                   label = list(intention_4cat ~ "Intention category",
                                 age ~ "Age (per year)",
                                 sex ~ "Sex",
                                 srh ~ "Self-rated health (1–5)")) |>
@@ -417,18 +530,77 @@ tbl_merge(
 )
 ```
 
-![Forest plot: unadjusted vs adjusted ORs for moving intentions predicting relocation (RQ1)](../paper/paper1/figures/RQ1_forest.png){fig-alt="Forest plot showing odds ratios for intention timeframe categories predicting relocation." width="75%"}
+![Forest plot: unadjusted vs adjusted ORs for moving intentions predicting relocation (RQ1)](../paper/paper1/figures/RQ1_forest.png){fig-alt="Forest plot showing odds ratios for intention categories predicting relocation, reference no stated intention." width="75%"}
+
+#### Sequential decomposition: any intention vs. urgency
+
+A single comparison against "no intention" across all four categories can read as tautological once the urgency gradient, which correlates with time-to-event by construction, is folded in. Splitting RQ1 into two sequential questions avoids this: Step A asks whether *any* stated intention (vs. none) predicts relocation; Step B asks, among those with a stated intention, whether urgency further predicts relocation.
+
+```{r}
+#| label: tbl-rq1-seq
+#| tbl-cap: "RQ1 sequential decomposition: any intention (Step A) vs. urgency among intenders (Step B)"
+tbl_merge(
+  list(
+    tbl_regression(a2, exponentiate = TRUE,
+                   label = list(has_intention ~ "Any intention (vs. none)",
+                                age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05),
+    tbl_regression(b2, exponentiate = TRUE,
+                   label = list(intention_timeframe_among_intenders ~ "Urgency (ref: 2+ years, intends)",
+                                age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05)
+  ),
+  tab_spanner = c("**Step A: Any intention**", "**Step B: Urgency among intenders**")
+)
+```
+
+Any stated intention was associated with substantially higher odds of relocation than none (adjusted OR = 5.9, 95% CI: 4.5–7.7) — the more defensible headline claim, since it does not depend on comparing groups that differ mechanically in how soon they expect to move. Among the `r nrow(dat_rq1_intenders)` respondents with a stated intention, urgency further predicted relocation, as expected given the relationship between urgency and time-to-event.
+
+![Sequential decomposition forest plot: any intention (Step A) vs. urgency among intenders (Step B)](../paper/paper1/figures/RQ1_sequential_forest.png){fig-alt="Forest plot comparing any-intention effect to urgency-among-intenders effect." width="75%"}
+
+#### Robustness: does the intention effect survive adjustment for socioeconomic status? {#intention-ses-robustness}
+
+```{r}
+#| label: tbl-rq1-ses
+#| tbl-cap: "RQ1 robustness: intention odds ratios before and after adjusting for register-measured SES"
+tbl_merge(
+  list(
+    tbl_regression(m2_ses_common, exponentiate = TRUE,
+                   label = list(intention_4cat ~ "Intention category",
+                                age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05),
+    tbl_regression(m2_ses, exponentiate = TRUE,
+                   label = list(intention_4cat ~ "Intention category",
+                                age ~ "Age (per year)", sex ~ "Sex",
+                                srh ~ "Self-rated health (1–5)",
+                                disp_ink_ke ~ "Disposable income (SEK/month)",
+                                civil_f ~ "Marital status",
+                                syss_f ~ "Employment status")) |>
+      modify_header(estimate ~ "**OR**") |>
+      bold_p(t = 0.05)
+  ),
+  tab_spanner = c("**Survey-only**", "**+ Register SES**")
+)
+```
+
+The intention odds ratios were essentially unchanged after adding register-measured income, marital status, and employment status (common n = `r nrow(dat_rq1_ses)`), arguing against a purely socioeconomic explanation for the intention-relocation association.
 
 ### RQ2: Housing factors add minimally beyond intentions {#rq2}
 
-Home satisfaction was the only housing factor with an independent association with relocation (OR ≈ 0.76–0.86; lower satisfaction associated with higher odds of relocation). Housing suitability and neighborhood cohesion did not independently predict relocation. Housing factors as a group added only marginally to the model beyond intentions (ΔNagelkerke R² = 0.008).
+Home satisfaction was the only housing factor with an independent association with relocation (OR ≈ 0.76–0.86; lower satisfaction associated with higher odds of relocation). Housing suitability and neighborhood cohesion did not independently predict relocation on their own, though suitability becomes a significant *positive* predictor once satisfaction is added to the model (a suppression pattern; see below). Housing factors as a group added only marginally to the model beyond intentions (ΔNagelkerke R² = 0.008).
 
 **Model equations** (M2 carried forward from RQ1; M6 adds housing factors):
 
 $$
 \begin{aligned}
-\text{M6:} \quad \text{logit}(p_i) &= \beta_0 + \boldsymbol{\beta}_{\text{int}} + \beta_3\,\text{Age} + \beta_4\,\text{Sex} + \beta_5\,\text{SRH} \\
-  &\quad + \beta_6\,\text{Suitability} + \beta_7\,\text{Satisfaction} + \beta_8\,\text{Cohesion}
+\text{M6:} \quad \text{logit}(p_i) &= \beta_0 + \boldsymbol{\beta}_{\text{int}} + \beta_4\,\text{Age} + \beta_5\,\text{Sex} + \beta_6\,\text{SRH} \\
+  &\quad + \beta_7\,\text{Suitability} + \beta_8\,\text{Satisfaction} + \beta_9\,\text{Cohesion}
 \end{aligned}
 $$
 
@@ -438,13 +610,13 @@ $$
 tbl_merge(
   list(
     tbl_regression(m2, exponentiate = TRUE,
-                   label = list(intention_timeframe ~ "Intention timeframe",
+                   label = list(intention_4cat ~ "Intention category",
                                 age ~ "Age (per year)", sex ~ "Sex",
                                 srh ~ "Self-rated health (1–5)")) |>
       modify_header(estimate ~ "**OR**") |>
       bold_p(t = 0.05),
     tbl_regression(m6, exponentiate = TRUE,
-                   label = list(intention_timeframe ~ "Intention timeframe",
+                   label = list(intention_4cat ~ "Intention category",
                                 age ~ "Age (per year)", sex ~ "Sex",
                                 srh ~ "Self-rated health (1–5)",
                                 housing_suitability    ~ "Housing suitability (1–5)",
@@ -459,13 +631,33 @@ tbl_merge(
 
 ![Forest plot: baseline vs full housing model predicting relocation (RQ2)](../paper/paper1/figures/RQ2_forest.png){fig-alt="Forest plot comparing baseline and full housing models." width="75%"}
 
+#### Is the housing suitability sign change collinearity or genuine suppression?
+
+Rather than assume the sign change is a suppression effect, VIFs and bivariate correlations were computed directly. VIFs for the three housing-block variables in M6 were low (housing suitability = `r round(rq2_vif_vals["housing_suitability"], 2)`, home satisfaction = `r round(rq2_vif_vals["home_satisfaction"], 2)`, neighbourhood cohesion = `r round(rq2_vif_vals["neighbourhood_cohesion"], 2)`; all model terms < 1.6), well below conventional concern thresholds (5–10). Housing suitability and home satisfaction were moderately correlated (*r* = `r round(rq2_cor_mat["housing_suitability","home_satisfaction"], 2)`), while neighbourhood cohesion was weakly correlated with both. This rules out problematic multicollinearity: the sign change reflects genuine suppression between two correlated but non-redundant predictors.
+
+A linearity-in-the-logit check (linear term vs. a fully saturated categorical version, compared by likelihood ratio test) did not reject the linear-term assumption for self-rated health, housing suitability, or home satisfaction (all *p* > .28), supporting their treatment as linear predictors throughout Paper 1:
+
+```{r}
+#| label: tbl-rq2-linearity
+#| tbl-cap: "Linearity-in-the-logit check: linear term vs. fully saturated categorical term (LRT), M6 full model"
+rq2_linearity_tab |>
+  mutate(variable = recode(variable,
+    "srh" = "Self-rated health",
+    "housing_suitability" = "Housing suitability",
+    "home_satisfaction" = "Home satisfaction"
+  )) |>
+  rename(Variable = variable, `Δdf` = delta_df, `p` = p_value) |>
+  gt() |>
+  tab_style(style = gt::cell_text(weight = "bold"), locations = gt::cells_body(rows = p < 0.05))
+```
+
 ### RQ3: Among intenders, who did not relocate? {#rq3}
 
 Of the 609 participants who intended to move within two years, 344 (56%) had not relocated by T3. Within this subgroup:
 
-- **Intention urgency:** Even within intenders, those expecting to move within a year were far more likely to follow through (OR = 5.8 vs. those expecting 1–2 years).
+- **Intention urgency:** Even within intenders, those expecting to move within a year were far more likely to follow through (OR = 5.7 vs. those expecting 1–2 years).
 - **Age:** Older intenders were less likely to relocate (OR = 0.96 per year).
-- **Having dependents:** The only specific obstacle significantly associated with non-relocation (OR = 0.18, 95% CI: 0.03–0.74), though based on small numbers (n = 19) and interpreted cautiously.
+- **Having dependents:** The only specific obstacle significantly associated with non-relocation (standard OR = 0.17, 95% CI: 0.02–0.69), though based on small numbers (n = `r sum(dat_rq3$obs_dependents == 1, na.rm = TRUE)`) and interpreted cautiously; a Firth penalized regression, more robust to this small cell, gives a somewhat less extreme but still significant estimate (see below).
 - Housing factors and most specific obstacles were not independently associated with non-relocation among intenders.
 
 ![Relocation rates by age group](figures/fig_relocation_by_age.png){fig-alt="Bar chart showing relocation rates by age group." width="70%"}
@@ -516,11 +708,17 @@ tbl_merge(
 
 ![Forest plot: models among intenders (RQ3)](../paper/paper1/figures/RQ3_forest.png){fig-alt="Forest plot comparing baseline and full models among intenders." width="75%"}
 
+#### Small-cell sensitivity: the dependents finding, and model power
+
+Only `r sum(dat_rq3$obs_dependents == 1, na.rm = TRUE)` respondents endorsed the dependents obstacle, so the standard maximum-likelihood estimate rests on a small cell. A Firth penalized logistic regression, more robust to rare-outcome/small-cell instability, gives OR = `r round(exp(coef(m4_rq3_firth)[names(coef(m4_rq3_firth)) == "obs_dependents"]), 2)` (95% CI: `r round(exp(m4_rq3_firth$ci.lower[names(coef(m4_rq3_firth)) == "obs_dependents"]), 2)`–`r round(exp(m4_rq3_firth$ci.upper[names(coef(m4_rq3_firth)) == "obs_dependents"]), 2)`), somewhat less extreme than the standard estimate (OR = 0.17) but confirming its direction and significance. This is specific to the dependents term, not a sign the RQ3 models are generally underpowered: events-per-variable for the full model (M4) was `r round(rq3_epv, 1)` (`r sum(dat_rq3$relocated_f == "Yes")` events / `r length(coef(m4_rq3)) - 1` predictors), above the conventional adequacy threshold of 10.
+
 *Predictors of unexpected relocation among non-intenders are examined in [Paper 2, RQ4](#rq4).*
 
 ## Limitations {#p1-limitations}
 
-Three limitations warrant attention. First, 545 participants did not respond at T3 and are administratively censored in survival analyses; non-response may not be random with respect to relocation or health status. Second, the sample is drawn from housing-company interest lists rather than the general older adult population; findings may not generalize to those who have not signaled relocation interest. Third, no time-varying measures of housing market conditions or individual financial capacity were available in the survey data; the Swedish rate-hike context (discussed in [Paper 2](#macro-context)) is therefore contextual rather than directly modelled. Register-linked income and employment variables are incorporated in supplementary models; see [Register-based analyses](#register-analyses).
+An earlier internal version of this analysis reported baseline N = 1,964; the six-person difference from the current N = 1,958 reflects additional exclusions applied during data cleaning and register linkage and does not affect any reported association.
+
+Four limitations warrant attention. First, 545 participants did not respond at T3 and are administratively censored in survival analyses; the [A8 attrition comparison](#attrition-bias) shows non-response is associated with worse self-rated health and lower income (though not age), so this is not completely random. An IPCW-weighted sensitivity analysis (below) shows the survival conclusions are robust to this. Second, the sample is drawn from housing-company interest lists rather than the general older adult population; findings may not generalize to those who have not signaled relocation interest. Third, no time-varying measures of housing market conditions or individual financial capacity were available in the survey data; the Swedish rate-hike context (discussed in [Paper 2](#macro-context)) is therefore contextual rather than directly modelled. Register-linked income and employment variables are incorporated in supplementary models; see [Register-based analyses](#register-analyses). Fourth, RQ1 and the housing-factor tests in RQ2 were pre-specified and are treated as confirmatory; the obstacle-by-obstacle comparisons in RQ3 and the robustness checks (SES adjustment, VIF/linearity, Firth, IPCW) are exploratory and hypothesis-generating, and no correction for multiple comparisons was applied across this larger set of tests.
 
 ## Further analysis: Survival analysis {#further-analysis-survival-analysis}
 
@@ -542,11 +740,11 @@ The strong early rise in the `< 1 year` group reflects rapid follow-through amon
 tbl_merge(
   list(
     tbl_regression(cox_m1, exponentiate = TRUE,
-                   label = list(intention_timeframe ~ "Intention timeframe")) |>
+                   label = list(intention_4cat ~ "Intention category")) |>
       modify_header(estimate ~ "**HR**") |>
       bold_p(t = 0.05),
     tbl_regression(cox_m2, exponentiate = TRUE,
-                   label = list(intention_timeframe ~ "Intention timeframe",
+                   label = list(intention_4cat ~ "Intention category",
                                 age ~ "Age (per year)", sex ~ "Sex",
                                 srh ~ "Self-rated health (1–5)")) |>
       modify_header(estimate ~ "**HR**") |>
@@ -563,7 +761,7 @@ tbl_merge(
 #| tbl-cap: "Schoenfeld residuals test of proportional hazards (Cox M2)"
 ph <- survival::cox.zph(cox_m2)
 tibble::tibble(
-  Term  = c("Intention timeframe", "Age", "Sex", "Self-rated health", "Global test"),
+  Term  = c("Intention category", "Age", "Sex", "Self-rated health", "Global test"),
   `χ²`  = round(ph$table[, "chisq"], 3),
   df    = ph$table[, "df"],
   p     = round(ph$table[, "p"], 4)
@@ -575,17 +773,17 @@ tibble::tibble(
   )
 ```
 
-The proportional hazards assumption is **violated for intention timeframe** (p < 0.001), consistent with the KM curves: the hazard of relocation in the `< 1 year` group is very high early in follow-up but attenuates over time as early movers are exhausted. All other predictors satisfy the assumption.
+The proportional hazards assumption is **violated for the intention variable** (p < 0.001), consistent with the KM curves: the hazard of relocation in the `< 1 year` group is very high early in follow-up but attenuates over time as early movers are exhausted. All other predictors satisfy the assumption.
 
-![Schoenfeld residuals for intention timeframe (Cox M2)](figures/fig_schoenfeld.png){fig-alt="Schoenfeld residual plots showing time-varying coefficients for intention categories." width="80%"}
+![Schoenfeld residuals for intention category (Cox M2)](figures/fig_schoenfeld.png){fig-alt="Schoenfeld residual plots showing time-varying coefficients for intention categories." width="80%"}
 
 ### Stratified Cox model
 
-To obtain valid covariate estimates unaffected by the proportional hazards violation, a stratified Cox model was fitted with intention timeframe as the stratifying variable. This removes the hazard ratio for intention (conveyed by the KM curves instead) but ensures unbiased estimates for age, sex, health, and housing factors.
+To obtain valid covariate estimates unaffected by the proportional hazards violation, a stratified Cox model was fitted with the four-level intention variable as the stratifying variable. This removes the hazard ratio for intention (conveyed by the KM curves instead) but ensures unbiased estimates for age, sex, health, and housing factors.
 
 ```{r}
 #| label: tbl-cox-strat
-#| tbl-cap: "Stratified Cox model (stratified by intention timeframe)"
+#| tbl-cap: "Stratified Cox model (stratified by intention category)"
 tbl_regression(cox_strat, exponentiate = TRUE,
                label = list(age ~ "Age (per year)", sex ~ "Sex",
                             srh ~ "Self-rated health (1–5)",
@@ -594,11 +792,35 @@ tbl_regression(cox_strat, exponentiate = TRUE,
                             neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)")) |>
   modify_header(estimate ~ "**HR**") |>
   bold_p(t = 0.05) |>
-  modify_caption("Stratified Cox model: HRs for covariates, stratified by intention timeframe.
+  modify_caption("Stratified Cox model: HRs for covariates, stratified by intention category.
                   Reference: Man. n = 1,828.")
 ```
 
-Results are consistent with logistic regression: lower home satisfaction is associated with higher hazard of relocation (HR = 0.84, p = 0.005). Housing suitability shows a positive association in the same direction as the suppression effect noted in RQ2. Neighborhood cohesion, sex, and self-rated health were not independently associated with time to relocation.
+Results are consistent with logistic regression: lower home satisfaction is associated with higher hazard of relocation (HR = 0.85, p = 0.006). Housing suitability shows a positive association in the same direction as the suppression effect noted in RQ2. Neighborhood cohesion, sex, and self-rated health were not independently associated with time to relocation.
+
+::: {.callout-note appearance="minimal"}
+**Fix note:** a previous version of this stratified model called `survival::strata()` with the namespace prefix. `coxph()`'s formula parser matches special terms (`strata`, `cluster`, etc.) by literal text and does not recognise a namespace-qualified call, so it was silently fitting intention as ordinary covariates rather than truly stratifying by it. This has been corrected (bare `strata()`, with `survival` attached via `library()`), and the numbers above reflect the fix.
+:::
+
+### Sensitivity: informative T3 non-response (IPCW)
+
+T3 non-respondents are administratively censored at study end, but the [A8 attrition comparison](#attrition-bias) shows non-response is associated with income and health. To test whether this informative censoring distorts the stratified estimates, the model was refit with inverse-probability-of-censoring weights (age, sex, SRH, register income, marital status, employment status), restricted to respondents with a genuinely known end time (relocated, or T3-censored; *n* = `r nrow(surv_ipcw)`; administratively censored cases dropped, since their true end time is unknown).
+
+```{r}
+#| label: tbl-cox-ipcw
+#| tbl-cap: "Sensitivity: IPCW-weighted stratified Cox model"
+tbl_regression(cox_strat_ipcw, exponentiate = TRUE,
+               label = list(age ~ "Age (per year)", sex ~ "Sex",
+                            srh ~ "Self-rated health (1–5)",
+                            housing_suitability    ~ "Housing suitability (1–5)",
+                            home_satisfaction      ~ "Home satisfaction (1–5)",
+                            neighbourhood_cohesion ~ "Neighborhood cohesion (1–3)")) |>
+  modify_header(estimate ~ "**HR**") |>
+  bold_p(t = 0.05) |>
+  modify_caption(paste0("IPCW-weighted stratified Cox model. Reference: Man. n = ", nrow(surv_ipcw), "."))
+```
+
+The housing-factor hazard ratios were essentially unchanged after IPCW adjustment (housing suitability: HR = 1.28 unweighted vs. 1.24 weighted; home satisfaction: HR = 0.85 vs. 0.82; both remained significant), indicating informative T3 non-response does not meaningfully bias the primary survival conclusions.
 
 ---
 
@@ -948,13 +1170,13 @@ df_attr <- df |>
 tbl_summary(
   df_attr,
   by = t3_responded,
-  include = c(age, sex, srh, intention_timeframe, housing_suitability,
+  include = c(age, sex, srh, intention_4cat, housing_suitability,
               disp_ink_ke, civil_f, syss_f),
   label = list(
     age                ~ "Age (years)",
     sex                ~ "Sex",
     srh                ~ "Self-rated health (1–5)",
-    intention_timeframe ~ "Expected timeframe to move",
+    intention_4cat     ~ "Moving intention category",
     housing_suitability ~ "Housing suitability (1–5)",
     disp_ink_ke        ~ "Disposable household income (SEK/month)",
     civil_f            ~ "Marital status (register)",
@@ -1034,7 +1256,7 @@ Three register variables address this concern directly:
 - **Marital status (`civil_f`):** Goes beyond the binary survey `lives_alone` item to capture five legal categories. Widowhood is theoretically important as a trigger for reactive relocation — losing a partner often leaves an older adult in a home that is too large, too expensive, or too socially isolated. Cohabiting and married individuals have shared decision-making and potentially dual resources.
 - **Employment/retirement status (`syss_f`):** Retirement is a major life-course transition that removes geographic constraints tied to employment. Retired individuals may have both the time and the freedom to relocate. In Swedish pension policy, retirement income is relatively stable, making employment status partly a proxy for life stage rather than purely economic position.
 
-The extended model (m_reg) adds all three register predictors to the m2 demographic baseline (intention timeframe + age + sex + self-rated health). The AIC comparison assesses whether register variables improve model fit beyond what is achievable with survey data alone — if AIC is substantially lower, this suggests register-based SES confounding is real and that Papers 1–2 models should be interpreted with appropriate caution about residual confounding.
+The extended model (m_reg, equivalent to `m2_ses` used in the [Paper 1 RQ1 robustness check](#intention-ses-robustness)) adds all three register predictors to the m2 demographic baseline (intention category + age + sex + self-rated health). The AIC comparison assesses whether register variables improve model fit beyond what is achievable with survey data alone — if AIC is substantially lower, this suggests register-based SES confounding is real and that Papers 1–2 models should be interpreted with appropriate caution about residual confounding.
 
 Income, marital status, and employment status are added as covariates to the primary logistic models.
 
@@ -1043,10 +1265,10 @@ Income, marital status, and employment status are added as covariates to the pri
 
 dat_reg <- dat |>
   filter(!is.na(disp_ink_ke), !is.na(civil_f), !is.na(syss_f),
-         !is.na(intention_timeframe), !is.na(age), !is.na(sex), !is.na(srh))
+         !is.na(intention_4cat), !is.na(age), !is.na(sex), !is.na(srh))
 
 m_reg <- glm(
-  relocated_f ~ intention_timeframe + age + sex + srh +
+  relocated_f ~ intention_4cat + age + sex + srh +
     disp_ink_ke + civil_f + syss_f,
   data = dat_reg, family = binomial
 )
@@ -1054,7 +1276,7 @@ m_reg <- glm(
 tbl_regression(
   m_reg, exponentiate = TRUE,
   label = list(
-    intention_timeframe ~ "Expected timeframe to move",
+    intention_4cat      ~ "Moving intention category",
     age                 ~ "Age (years)",
     sex                 ~ "Sex",
     srh                 ~ "Self-rated health",
@@ -1067,7 +1289,7 @@ tbl_regression(
   modify_caption("Extended RQ1 model with register covariates (OR, 95% CI)")
 ```
 
-**Interpreting the extended model.** Attention should first go to whether the intention timeframe coefficients change materially after adding register covariates (comparing ORs in m_reg versus m2). If the intention effects remain similar in magnitude, it strengthens the conclusion that intentions have independent predictive value beyond socioeconomic circumstances. If the intention ORs are attenuated, it suggests that part of the apparent intention effect reflects underlying SES differences between intenders and non-intenders. Widowhood (relative to married) and single-person household status are of particular interest: positive, statistically significant coefficients would support a reactive relocation narrative in which structural circumstances, not preferences, drive moves.
+**Interpreting the extended model.** Attention should first go to whether the intention coefficients change materially after adding register covariates (comparing ORs in m_reg versus m2). They do not: e.g. the < 1 year OR is `r round(exp(coef(m2))["intention_4cat< 1 year"], 1)` in m2 (survey-only) and `r round(exp(coef(m_reg))["intention_4cat< 1 year"], 1)` in m_reg (with register SES) — only a small shift, strengthening the conclusion that intentions have independent predictive value beyond socioeconomic circumstances. Widowhood (relative to married) and single-person household status are of particular interest: positive, statistically significant coefficients would support a reactive relocation narrative in which structural circumstances, not preferences, drive moves.
 
 AIC comparison with base model (m2, survey variables only):
 

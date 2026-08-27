@@ -1,0 +1,4 @@
+variable,n_categories,delta_df,delta_dev,p_value
+srh,5,3,3.8,0.284
+housing_suitability,16,14,13.6,0.48
+home_satisfaction,5,3,3.05,0.384

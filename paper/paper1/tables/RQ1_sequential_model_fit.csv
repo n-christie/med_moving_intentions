@@ -1,0 +1,5 @@
+step,n,AIC,nagelkerke_r2
+A1 (any intention),1890,1747.3,0.156
+"A2 (any intention, adjusted)",1890,1736.8,0.168
+B1 (urgency | intends),913,997.4,0.252
+"B2 (urgency | intends, adjusted)",913,987.2,0.272

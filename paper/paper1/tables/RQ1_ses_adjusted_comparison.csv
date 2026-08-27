@@ -1,0 +1,7 @@
+term,estimate,std.error,statistic,p.value,conf.low,conf.high,model
+"intention_4cat2+ years, intends",2.101,0.19317239307330206,3.8430939756543228,1e-4,1.432,3.058,M2 (survey-only)
+intention_4cat1–2 years,4.479,0.16643422780146644,9.008578967131374,0,3.237,6.22,M2 (survey-only)
+intention_4cat< 1 year,28.462,0.19162809354106003,17.474309848406126,0,19.677,41.733,M2 (survey-only)
+"intention_4cat2+ years, intends",2.01,0.19488160167141957,3.5813150716168023,3e-4,1.365,2.935,M2 + register SES
+intention_4cat1–2 years,4.32,0.1682637304995088,8.696319780731544,0,3.111,6.021,M2 + register SES
+intention_4cat< 1 year,26.918,0.19390105987788864,16.981855972245075,0,18.526,39.645,M2 + register SES

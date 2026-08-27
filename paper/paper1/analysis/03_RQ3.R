@@ -1,5 +1,6 @@
 library(tidyverse)
 library(broom)
+library(logistf)
 
 # ── Overview ──────────────────────────────────────────────────────────────────
 # RQ3: Among those who intended to move at baseline, which factors are
@@ -14,6 +15,18 @@ library(broom)
 #   M3 — M1 + obstacles
 #   M4 — M1 + housing + obstacles (full model)
 #
+# Reviewer-requested robustness checks (small-cell handling in M3/M4):
+#   - obs_dependents is endorsed by only ~18 of ~584-609 complete cases. The
+#     standard MLE estimate (OR = 0.18, 95% CI 0.03-0.74) is reported
+#     alongside a Firth penalized logistic regression (logistf), which
+#     handles rare-outcome/small-cell instability better than MLE and gives a
+#     profile-likelihood CI that does not rely on the same asymptotic
+#     approximation. Both M3 and M4 (the models containing obs_dependents)
+#     are refit with Firth for comparison.
+#   - Events-per-variable (EPV) is reported for M4 (the full model) so
+#     readers can judge whether the model is adequately powered overall,
+#     separately from the dependents cell-count issue above.
+#
 # Outputs:
 #   figures/RQ3_forest.png
 #   tables/RQ3_intender_sample.csv
@@ -21,7 +34,9 @@ library(broom)
 #   tables/RQ3_all_coefficients.csv
 #   tables/RQ3_model_fit.csv
 #   tables/RQ3_lrt.csv
-#   models/RQ3_m1.rds … RQ3_m4.rds
+#   tables/RQ3_epv.csv
+#   tables/RQ3_dependents_firth_comparison.csv
+#   models/RQ3_m1.rds … RQ3_m4.rds, RQ3_m3_firth.rds, RQ3_m4_firth.rds
 
 # ── Load data and subset to intenders ─────────────────────────────────────────
 panel <- readRDS("data/processed/panel_merged.rds")
@@ -166,6 +181,62 @@ lrt <- list(M2 = m2_rq3, M3 = m3_rq3, M4 = m4_rq3) |>
   })
 print(lrt)
 
+# ── Events-per-variable (EPV) for the full model ────────────────────────────────
+n_events   <- sum(dat_m$relocated_f == "Yes")
+n_nonevent <- sum(dat_m$relocated_f == "No")
+n_predictors_m4 <- length(coef(m4_rq3)) - 1  # exclude intercept
+epv <- tibble(
+  model            = "M4 (full model)",
+  n                = nrow(dat_m),
+  n_events         = n_events,
+  n_predictors     = n_predictors_m4,
+  epv_events       = round(n_events / n_predictors_m4, 1),
+  epv_min_outcome  = round(min(n_events, n_nonevent) / n_predictors_m4, 1)
+)
+cat("\n=== Events-per-variable, M4 full model ===\n")
+print(epv)
+cat("Note: overall EPV is adequate (>=10) despite obs_dependents itself being\n",
+    "endorsed by only", sum(dat_m$obs_dependents == 1, na.rm = TRUE),
+    "respondents — that is a small-cell problem for one term, not evidence\n",
+    "the whole model is underpowered.\n")
+
+# ── Firth penalized logistic regression for obs_dependents (item 4) ────────────
+m3_firth <- logistf(
+  relocated_f ~ intention_level + age + sex + srh +
+    any_obstacle + obs_financial + obs_supply + obs_energy +
+    obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
+  data = dat_m
+)
+m4_firth <- logistf(
+  relocated_f ~ intention_level + age + sex + srh +
+    housing_suitability + home_satisfaction + neighbourhood_cohesion +
+    any_obstacle + obs_financial + obs_supply + obs_energy +
+    obs_own_health + obs_partner_health + obs_dependents + obs_bulky,
+  data = dat_m
+)
+
+firth_row <- function(firth_mod, glm_mod, model_label) {
+  fs <- summary(firth_mod)
+  i  <- which(names(coef(firth_mod)) == "obs_dependents")
+  tibble(
+    model    = model_label,
+    method   = c("Standard MLE", "Firth penalized ML"),
+    estimate = c(exp(coef(glm_mod)["obs_dependents"]), exp(coef(firth_mod)[i])),
+    conf.low = c(exp(confint(glm_mod)["obs_dependents", 1]), exp(firth_mod$ci.lower[i])),
+    conf.high= c(exp(confint(glm_mod)["obs_dependents", 2]), exp(firth_mod$ci.upper[i])),
+    p.value  = c(coef(summary(glm_mod))["obs_dependents", 4], firth_mod$prob[i])
+  )
+}
+
+cat("\n=== obs_dependents: standard MLE vs Firth penalized ML ===\n")
+dependents_comparison <- bind_rows(
+  suppressMessages(firth_row(m3_firth, m3_rq3, "M3 (obstacles only)")),
+  suppressMessages(firth_row(m4_firth, m4_rq3, "M4 (full model)"))
+) |>
+  mutate(across(c(estimate, conf.low, conf.high), \(x) round(x, 3)),
+         p.value = round(p.value, 4))
+print(dependents_comparison)
+
 # ── Save outputs ──────────────────────────────────────────────────────────────
 all_coef <- list(M1 = m1_rq3, M2 = m2_rq3, M3 = m3_rq3, M4 = m4_rq3) |>
   imap_dfr(\(mod, nm) {
@@ -176,16 +247,20 @@ all_coef <- list(M1 = m1_rq3, M2 = m2_rq3, M3 = m3_rq3, M4 = m4_rq3) |>
              p.value = round(p.value, 4), model = nm)
   })
 
-write_csv(intender_sample, "paper/paper1/tables/RQ3_intender_sample.csv")
-write_csv(obstacle_prev,   "paper/paper1/tables/RQ3_obstacle_prevalence.csv")
-write_csv(all_coef,        "paper/paper1/tables/RQ3_all_coefficients.csv")
-write_csv(model_fit,       "paper/paper1/tables/RQ3_model_fit.csv")
-write_csv(lrt,             "paper/paper1/tables/RQ3_lrt.csv")
+write_csv(intender_sample,        "paper/paper1/tables/RQ3_intender_sample.csv")
+write_csv(obstacle_prev,          "paper/paper1/tables/RQ3_obstacle_prevalence.csv")
+write_csv(all_coef,               "paper/paper1/tables/RQ3_all_coefficients.csv")
+write_csv(model_fit,              "paper/paper1/tables/RQ3_model_fit.csv")
+write_csv(lrt,                    "paper/paper1/tables/RQ3_lrt.csv")
+write_csv(epv,                    "paper/paper1/tables/RQ3_epv.csv")
+write_csv(dependents_comparison,  "paper/paper1/tables/RQ3_dependents_firth_comparison.csv")
 
-write_rds(m1_rq3, "paper/paper1/models/RQ3_m1.rds")
-write_rds(m2_rq3, "paper/paper1/models/RQ3_m2.rds")
-write_rds(m3_rq3, "paper/paper1/models/RQ3_m3.rds")
-write_rds(m4_rq3, "paper/paper1/models/RQ3_m4.rds")
+write_rds(m1_rq3,   "paper/paper1/models/RQ3_m1.rds")
+write_rds(m2_rq3,   "paper/paper1/models/RQ3_m2.rds")
+write_rds(m3_rq3,   "paper/paper1/models/RQ3_m3.rds")
+write_rds(m4_rq3,   "paper/paper1/models/RQ3_m4.rds")
+write_rds(m3_firth, "paper/paper1/models/RQ3_m3_firth.rds")
+write_rds(m4_firth, "paper/paper1/models/RQ3_m4_firth.rds")
 
 # Forest plot — M3 (obstacles model; best AIC)
 forest_dat <- tidy(m3_rq3, conf.int = TRUE, exponentiate = TRUE) |>

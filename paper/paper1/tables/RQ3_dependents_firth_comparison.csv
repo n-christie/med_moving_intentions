@@ -1,0 +1,5 @@
+model,method,estimate,conf.low,conf.high,p.value
+M3 (obstacles only),Standard MLE,0.165,0.024,0.693,0.029
+M3 (obstacles only),Firth penalized ML,0.207,0.037,0.785,0.0186
+M4 (full model),Standard MLE,0.169,0.024,0.713,0.0315
+M4 (full model),Firth penalized ML,0.214,0.038,0.809,0.0212

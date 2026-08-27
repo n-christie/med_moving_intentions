@@ -46,20 +46,92 @@ var_label(df$relocated_f) <- "Relocated during study period"
 #   2 = 1 to 2 years
 #   3 = 2 years or more
 #
-# Reference category set to 3 (lowest intention) for RQ1/RQ2 full-sample models.
-# For RQ3 (intenders only), reference is 2 (1–2 years) — see 03_RQ3_intenders.R.
+# VAR21_1_T1: "I/we are on the waiting list but have no plans to move at this
+#   time" (Yes/No) — one of several checkbox reasons for having joined the
+#   housing-company interest list.
+#
+# NOTE: this is NOT a skip-logic pair. Both items were asked of the full T1
+# sample; VAR24_T1 is not a filtered follow-up restricted to people who denied
+# VAR21_1_T1. Historically only VAR24_T1 was used, with "2 years or more"
+# (value 3) treated as the reference/lowest-intention category. Crosstabbing
+# the two items shows that category actually blends two different groups:
+#   - VAR21_1_T1 = "no plans" & VAR24_T1 = "2+ years": n = 979, 8.5% relocated
+#   - VAR21_1_T1 = "active reason" & VAR24_T1 = "2+ years": n = 307, 16.6% relocated
+# i.e. nearly double the relocation rate among people who still gave an active
+# reason for being on the list despite a distant timeframe. A 4-level factor is
+# built below to separate these groups, with "no stated intention" as the
+# reference (the previous reference blended it with the more mobile group above).
+#
+# Precedence rule when the two items conflict: when someone checks "no plans
+# to move" (VAR21_1_T1) but nonetheless reports a timeframe shorter than 2+
+# years on VAR24_T1 (n = 102), the stated timeframe is treated as the
+# authoritative signal of intention, not the checkbox. This is an empirical
+# choice, not just a conservative default: these 102 people relocated at 27.5%,
+# higher than the "2+ years, active reason" group (16.6%) and much higher than
+# the "no plans, 2+ years" group (8.5%) — i.e. they behave like intenders, not
+# non-intenders, so they are classified by VAR24_T1 rather than VAR21_1_T1.
+#
+# Missing handling: intention_4cat is NA whenever VAR24_T1 is NA (n = 63),
+# regardless of VAR21_1_T1, since VAR24_T1 is required to place a respondent
+# into the "2+ years" vs "no stated intention" split as well as the two
+# shorter-timeframe categories.
+df <- df |>
+  mutate(
+    intention_4cat = factor(
+      case_when(
+        VAR21_1_T1 == 1 & VAR24_T1 == 3 ~ "No stated intention (ref)",
+        VAR24_T1 == 3 ~ "2+ years, intends",
+        VAR24_T1 == 2 ~ "1\u20132 years",
+        VAR24_T1 == 1 ~ "< 1 year",
+        TRUE ~ NA_character_
+      ),
+      levels = c("No stated intention (ref)", "2+ years, intends", "1\u20132 years", "< 1 year")
+    ),
+    # Binary collapse of intention_4cat for the sequential RQ1 framing:
+    # (a) any stated intention vs none, before asking (b) whether urgency
+    # among intenders further predicts relocation.
+    has_intention = factor(
+      if_else(intention_4cat == "No stated intention (ref)", "No", "Yes"),
+      levels = c("No", "Yes")
+    ),
+    # 3-level timeframe among those with any stated intention (used for the
+    # RQ1 step-B model and other among-intenders analyses that want urgency
+    # only, without the "no stated intention" group in the picture).
+    intention_timeframe_among_intenders = factor(
+      case_when(
+        intention_4cat == "2+ years, intends" ~ "2+ years, intends (ref)",
+        intention_4cat == "1\u20132 years" ~ "1\u20132 years",
+        intention_4cat == "< 1 year" ~ "< 1 year",
+        TRUE ~ NA_character_
+      ),
+      levels = c("2+ years, intends (ref)", "1\u20132 years", "< 1 year")
+    )
+  )
+var_label(df$intention_4cat) <- "Expected timeframe to move, no-intention separated (VAR24_T1 x VAR21_1_T1)"
+var_label(df$has_intention) <- "Any stated intention to move at baseline (vs none)"
+var_label(df$intention_timeframe_among_intenders) <- "Intention timeframe among those with any stated intention"
+
+cat("intention_4cat distribution:\n")
+print(table(df$intention_4cat, useNA = "ifany"))
+
+# Original 3-level VAR24_T1-only variable, kept unchanged for Paper 2 and the
+# legacy scripts/02_analyze/ pipeline, which are out of scope for the Paper 1
+# revision above. Paper 1 scripts now use intention_4cat / has_intention /
+# intention_timeframe_among_intenders instead of this variable.
 df <- df |>
   mutate(
     intention_timeframe = factor(
       VAR24_T1,
       levels = c(3, 2, 1),
-      labels = c("2+ years (ref)", "1\u20132 years", "< 1 year")
+      labels = c("2+ years (ref)", "1–2 years", "< 1 year")
     )
   )
 var_label(df$intention_timeframe) <- "Expected timeframe to move (VAR24_T1)"
 
-# VAR24_T1 within-intenders version (reference = 1–2 years):
-# Created here for consistency; used in RQ3 subset.
+# VAR24_T1 within-intenders version (reference = 1–2 years), unchanged:
+# subsets to VAR024 %in% c(1,2) so it never touches the "2+ years" split
+# above; retained for RQ3 (intenders defined as expecting to move within
+# 2 years) — see 03_RQ3.R.
 df <- df |>
   mutate(
     intention_level = factor(

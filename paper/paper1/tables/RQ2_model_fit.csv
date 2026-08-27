@@ -1,6 +1,6 @@
 model,AIC,nagelkerke_r2,delta_aic
-M2 (baseline),1532,0.287,0
-M3 (+suitability),1532.7,0.288,0.7
-M4 (+satisfaction),1528.9,0.291,-3.1
-M5 (+cohesion),1533.7,0.288,1.7
-M6 (full housing),1526.5,0.295,-5.5
+M2 (baseline),1520.8,0.297,0
+M3 (+suitability),1521.1,0.298,0.3
+M4 (+satisfaction),1518.9,0.299,-1.9
+M5 (+cohesion),1522.7,0.297,1.9
+M6 (full housing),1516.1,0.304,-4.7

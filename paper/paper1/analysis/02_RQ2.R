@@ -6,6 +6,8 @@ library(broom)
 #      relocation, independent of moving intentions?
 #
 # Outcome:    relocated_f (factor, No/Yes)
+# Predictor:  intention_4cat (ref = "No stated intention") — see
+#             scripts/01_clean/02_recode.R section 3 for construction.
 # Models build on the RQ1 adjusted baseline (M2):
 #   M2 — intentions + age + sex + srh                  [baseline, from RQ1]
 #   M3 — M2 + housing suitability
@@ -13,12 +15,26 @@ library(broom)
 #   M5 — M2 + neighbourhood cohesion
 #   M6 — M2 + all housing factors (full model)
 #
+# Also reported here (reviewer-requested robustness checks, referenced from
+# 03_RQ3.R and the stratified Cox model in 04_survival.R since they reuse the
+# same three housing-block variables):
+#   - VIF/GVIF for the M6 full model, to check whether the sign flip on
+#     housing_suitability once home_satisfaction is added (a suppression
+#     effect) reflects genuine collinearity.
+#   - Bivariate correlations among housing_suitability, home_satisfaction,
+#     neighbourhood_cohesion.
+#   - Linearity-in-the-logit check (linear vs. categorical/quartile term,
+#     compared by LRT) for srh, housing_suitability, home_satisfaction.
+#
 # Outputs:
 #   figures/RQ2_forest.png
 #   tables/RQ2_housing_descriptives.csv
 #   tables/RQ2_all_coefficients.csv
 #   tables/RQ2_model_fit.csv
 #   tables/RQ2_lrt.csv
+#   tables/RQ2_vif.csv
+#   tables/RQ2_housing_correlations.csv
+#   tables/RQ2_linearity_check.csv
 #   models/RQ2_m2.rds … RQ2_m6.rds
 
 # ── Load data ─────────────────────────────────────────────────────────────────
@@ -27,7 +43,7 @@ df    <- panel |> filter(wave == "T1")
 
 dat_m <- df |>
   filter(
-    !is.na(relocated_f), !is.na(intention_timeframe), !is.na(age), !is.na(sex), !is.na(srh),
+    !is.na(relocated_f), !is.na(intention_4cat), !is.na(age), !is.na(sex), !is.na(srh),
     complete.cases(pick(housing_suitability, home_satisfaction, neighbourhood_cohesion))
   )
 
@@ -45,15 +61,15 @@ housing_desc <- dat_m |>
 print(housing_desc)
 
 # ── Fit models ────────────────────────────────────────────────────────────────
-m2 <- glm(relocated_f ~ intention_timeframe + age + sex + srh,
+m2 <- glm(relocated_f ~ intention_4cat + age + sex + srh,
           data = dat_m, family = binomial)
-m3 <- glm(relocated_f ~ intention_timeframe + age + sex + srh + housing_suitability,
+m3 <- glm(relocated_f ~ intention_4cat + age + sex + srh + housing_suitability,
           data = dat_m, family = binomial)
-m4 <- glm(relocated_f ~ intention_timeframe + age + sex + srh + home_satisfaction,
+m4 <- glm(relocated_f ~ intention_4cat + age + sex + srh + home_satisfaction,
           data = dat_m, family = binomial)
-m5 <- glm(relocated_f ~ intention_timeframe + age + sex + srh + neighbourhood_cohesion,
+m5 <- glm(relocated_f ~ intention_4cat + age + sex + srh + neighbourhood_cohesion,
           data = dat_m, family = binomial)
-m6 <- glm(relocated_f ~ intention_timeframe + age + sex + srh +
+m6 <- glm(relocated_f ~ intention_4cat + age + sex + srh +
             housing_suitability + home_satisfaction + neighbourhood_cohesion,
           data = dat_m, family = binomial)
 
@@ -103,6 +119,75 @@ lrt <- list(M3 = m3, M4 = m4, M5 = m5, M6 = m6) |>
   })
 print(lrt)
 
+# ── VIF / collinearity check (item 5) ──────────────────────────────────────────
+# Housing suitability shows a sign flip / suppression-like pattern once home
+# satisfaction is added (see RQ2 results). Checking VIF and bivariate
+# correlations directly, rather than assuming suppression, so the claim is
+# testable. Also referenced from 03_RQ3.R and the stratified Cox model in
+# 04_survival.R, which reuse the same three housing-block variables.
+cat("\n=== VIF for M6 (full housing model), computed manually via lm() ===\n")
+# car::vif() is unavailable (car requires R >= 4.2 via its pbkrtest dependency;
+# this environment runs R 4.1.2). VIF = 1/(1-R^2) from regressing each design-
+# matrix column on all other columns is the standard linear-regression
+# definition and matches car::vif() for continuous predictors; it is computed
+# here for every predictor in M6, not only the three housing-block variables,
+# so nothing is cherry-picked.
+X <- model.matrix(m6)[, -1, drop = FALSE]  # drop intercept
+vif_manual <- function(X) {
+  vapply(colnames(X), function(cn) {
+    fit <- lm(X[, cn] ~ X[, colnames(X) != cn])
+    r2  <- summary(fit)$r.squared
+    round(1 / (1 - r2), 3)
+  }, numeric(1))
+}
+vif_tab <- vif_manual(X)
+print(vif_tab)
+vif_df <- tibble(term = names(vif_tab), VIF = vif_tab)
+
+cat("\n=== Bivariate correlations: housing_suitability, home_satisfaction, neighbourhood_cohesion ===\n")
+housing_cor <- dat_m |>
+  select(housing_suitability, home_satisfaction, neighbourhood_cohesion) |>
+  cor(use = "pairwise.complete.obs") |>
+  round(3)
+print(housing_cor)
+housing_cor_df <- as.data.frame(housing_cor) |> rownames_to_column("var")
+
+# ── Linearity-in-the-logit check (item 6) ──────────────────────────────────────
+# Compares the M6 full model (linear term for the variable of interest) against
+# an otherwise identical model where that one term is replaced with a
+# categorical (quartile) version, via LRT. A non-significant LRT means the
+# linear-term assumption is not rejected by the data.
+#
+# Natural splines were tried first but fail for housing_suitability: 65% of
+# respondents sit at the ceiling value (5), so quantile-based interior knots
+# collapse and ns() cannot construct a valid basis. Quartile bins (both
+# rank-based ntile and quantile cut points) were tried next but produced too
+# few categories to test against (all three variables are Likert-type or
+# composites of Likert items with only 5-16 discrete values, so quartile
+# breaks collapse or tie with the linear term's 1 df). Instead, the linear
+# term is compared against a fully saturated categorical version (one dummy
+# per observed value) via LRT — the standard linearity-in-the-logit test when
+# a covariate has few discrete levels.
+linearity_check <- function(var) {
+  dat_lc <- dat_m |> mutate(.cat = factor(.data[[var]]))
+  f_lin  <- reformulate(all.vars(formula(m6))[-1], response = "relocated_f")
+  f_cat  <- update(f_lin, as.formula(paste0(". ~ . - ", var, " + .cat")))
+  mod_lin <- glm(f_lin, data = dat_lc, family = binomial)
+  mod_cat <- glm(f_cat, data = dat_lc, family = binomial)
+  l <- anova(mod_lin, mod_cat, test = "LRT")
+  tibble(variable = var, n_categories = length(levels(dat_lc$.cat)),
+         delta_df = l$Df[2], delta_dev = round(l$Deviance[2], 2),
+         p_value = round(l$`Pr(>Chi)`[2], 3))
+}
+
+cat("\n=== Linearity-in-the-logit check (linear vs. saturated categorical term, LRT) ===\n")
+linearity_tab <- bind_rows(
+  linearity_check("srh"),
+  linearity_check("housing_suitability"),
+  linearity_check("home_satisfaction")
+)
+print(linearity_tab)
+
 # ── Save outputs ──────────────────────────────────────────────────────────────
 # All model coefficients combined
 all_coef <- list(M2 = m2, M3 = m3, M4 = m4, M5 = m5, M6 = m6) |>
@@ -113,10 +198,13 @@ all_coef <- list(M2 = m2, M3 = m3, M4 = m4, M5 = m5, M6 = m6) |>
              p.value = round(p.value, 4), model = nm)
   })
 
-write_csv(housing_desc, "paper/paper1/tables/RQ2_housing_descriptives.csv")
-write_csv(all_coef,     "paper/paper1/tables/RQ2_all_coefficients.csv")
-write_csv(model_fit,    "paper/paper1/tables/RQ2_model_fit.csv")
-write_csv(lrt,          "paper/paper1/tables/RQ2_lrt.csv")
+write_csv(housing_desc,   "paper/paper1/tables/RQ2_housing_descriptives.csv")
+write_csv(all_coef,       "paper/paper1/tables/RQ2_all_coefficients.csv")
+write_csv(model_fit,      "paper/paper1/tables/RQ2_model_fit.csv")
+write_csv(lrt,            "paper/paper1/tables/RQ2_lrt.csv")
+write_csv(vif_df,         "paper/paper1/tables/RQ2_vif.csv")
+write_csv(housing_cor_df, "paper/paper1/tables/RQ2_housing_correlations.csv")
+write_csv(linearity_tab,  "paper/paper1/tables/RQ2_linearity_check.csv")
 
 write_rds(m2, "paper/paper1/models/RQ2_m2.rds")
 write_rds(m3, "paper/paper1/models/RQ2_m3.rds")
@@ -129,17 +217,18 @@ forest_dat <- tidy(m6, conf.int = TRUE, exponentiate = TRUE) |>
   filter(!str_detect(term, "Intercept")) |>
   mutate(
     term = recode(term,
-      "intention_timeframe1\u20132 years" = "Intention: 1\u20132 years",
-      "intention_timeframe< 1 year"       = "Intention: < 1 year",
-      "age"                               = "Age (per year)",
-      "sexWoman"                          = "Sex: Woman",
-      "srh"                               = "Self-rated health",
-      "housing_suitability"               = "Housing suitability",
-      "home_satisfaction"                 = "Home satisfaction",
-      "neighbourhood_cohesion"            = "Neighbourhood cohesion"
+      "intention_4cat2+ years, intends" = "Intention: 2+ years, intends",
+      "intention_4cat1\u20132 years"           = "Intention: 1\u20132 years",
+      "intention_4cat< 1 year"               = "Intention: < 1 year",
+      "age"                                   = "Age (per year)",
+      "sexWoman"                              = "Sex: Woman",
+      "srh"                                   = "Self-rated health",
+      "housing_suitability"                   = "Housing suitability",
+      "home_satisfaction"                     = "Home satisfaction",
+      "neighbourhood_cohesion"                = "Neighbourhood cohesion"
     ),
     term = factor(term, levels = rev(c(
-      "Intention: 1\u20132 years", "Intention: < 1 year",
+      "Intention: 2+ years, intends", "Intention: 1\u20132 years", "Intention: < 1 year",
       "Age (per year)", "Sex: Woman", "Self-rated health",
       "Housing suitability", "Home satisfaction", "Neighbourhood cohesion"
     ))),
@@ -156,7 +245,7 @@ p_forest <- ggplot(forest_dat,
                       labels  = c("TRUE" = "p < .05", "FALSE" = "p ≥ .05")) +
   labs(x = "Odds ratio (log scale)", y = NULL, colour = NULL,
        title   = "RQ2: Housing factors predicting relocation (M6, full model)",
-       caption = "Reference: 2+ years intention, Male, adjusted for age, sex, SRH.") +
+       caption = "Reference: no stated intention, Male, adjusted for age, sex, SRH.") +
   theme_bw(base_size = 12) +
   theme(legend.position    = "bottom",
         panel.grid.minor   = element_blank(),

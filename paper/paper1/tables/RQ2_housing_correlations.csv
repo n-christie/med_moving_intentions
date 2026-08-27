@@ -1,0 +1,4 @@
+var,housing_suitability,home_satisfaction,neighbourhood_cohesion
+housing_suitability,1,0.498,0.165
+home_satisfaction,0.498,1,0.245
+neighbourhood_cohesion,0.165,0.245,1
